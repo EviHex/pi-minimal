@@ -1,0 +1,8 @@
+{
+  "name": "pi-minimal-plan-mode",
+  "version": "0.1.0",
+  "description": "Minimal plan mode for pi: /plan toggles a read-only instruction in the system prompt.",
+  "keywords": ["pi-package", "pi-extension"],
+  "pi": { "extensions": ["./index.ts"] },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" }
+}
