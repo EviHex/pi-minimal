@@ -1,28 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { KeyId } from "@earendil-works/pi-tui";
-
-const PROMPT_PLAN_MODE_ON = `PLAN MODE is ON. Read and investigate only. Change nothing: no files, repo state, processes, or remote data.
-- Allowed: reading files, searching, read-only commands (ls, rg, cat, git/jj log|diff|status), and read-only API/MCP calls (get, list, search, read-only queries).
-- Forbidden: anything that writes: edit/write tools, sed -i, writing to files with > or >> or tee (/dev/null or /tmp is fine), rm/mv/cp, installs, commits or checkouts, kill, POST/PUT/PATCH/DELETE requests, and MCP/API calls that create, update, or delete (databases, configs, Datadog dashboards, monitors). Do not delegate such work to subagents.
-- If you are not sure a command is read-only, do not run it. Put it in the plan.
-- The user runs /plan to exit plan mode before you execute it.`;
-
-const PROMPT_PLAN_MODE_OFF = "Plan mode is OFF. You may read and write freely.";
-
-/** What the user can configure in settings.json, under "pi-minimal"."plan-mode" */
-interface PlanModeSettings {
-	/** Keyboard shortcut to toggle plan mode. */
-	keyboardShortcut: KeyId;
-}
-
-const DEFAULT_SETTINGS: PlanModeSettings = {
-	keyboardShortcut: "ctrl+shift+p"
-};
-
-function loadSettings(pi: ExtensionAPI): PlanModeSettings {
-	const file = pi.getSettings() as { "pi-minimal"?: { "plan-mode"?: Partial<PlanModeSettings> } };
-	return { ...DEFAULT_SETTINGS, ...file["pi-minimal"]?.["plan-mode"] };
-}
+import { PROMPT_PLAN_MODE_OFF, PROMPT_PLAN_MODE_ON } from "./prompts.js";
+import { loadSettings } from "./settings.js";
 
 export default function (pi: ExtensionAPI) {
 	let on = false;

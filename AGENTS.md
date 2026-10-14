@@ -20,7 +20,9 @@ may now make changes. That is all.
 
 ## Files
 
-- `index.ts` — the whole extension.
+- `index.ts` — the extension: `/plan` command, shortcut, prompt injection.
+- `prompts.ts` — the ON/OFF prompt texts.
+- `settings.ts` — settings type, defaults, `loadSettings()`.
 - `package.json` — `pi` manifest and package metadata (`index.ts` alone
   would also be discovered).
 
