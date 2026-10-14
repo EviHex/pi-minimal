@@ -1,4 +1,4 @@
-# pi-minimal-extensions
+# pi-minimal
 
 Collection of small, single-purpose pi extensions. Each subfolder is its own npm
 package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and

@@ -29,5 +29,5 @@ may now make changes. That is all.
 ## Conventions
 
 - Keep it minimal. Add code only for a real need.
-- Lives in the pi-minimal-extensions jj repo (see root `AGENTS.md`).
+- Lives in the pi-minimal jj repo (see root `AGENTS.md`).
 - After edits, restart pi to load changes.
