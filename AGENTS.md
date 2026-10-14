@@ -1,7 +1,9 @@
 # pi-minimal-plan-mode
 
 `/plan` toggles plan mode. When on, a `plan_mode` section is added to the system
-prompt telling the agent to stay read-only and output a plan. That is all.
+prompt telling the agent to stay read-only and output a plan. When toggled
+off, the section becomes a short "Plan mode is OFF" line, so the agent knows it
+may now make changes. That is all.
 
 ## Scope
 
