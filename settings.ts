@@ -7,6 +7,7 @@ export interface PlanModeSettings {
 	keyboardShortcut: KeyId;
 }
 
+/** Fallback when keys are not configured */
 const DEFAULT_SETTINGS: PlanModeSettings = {
 	keyboardShortcut: "ctrl+shift+p"
 };
