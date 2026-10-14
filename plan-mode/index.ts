@@ -14,7 +14,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.registerCommand("plan", {
-		description: "Toggle plan mode (read-only, prompt-enforced)",
+		description: "Toggle read-only plan mode (prompt-enforced)",
 		handler: async (_args, ctx) => togglePlanMode(ctx),
 	});
 

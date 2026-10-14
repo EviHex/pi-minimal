@@ -1,5 +1,5 @@
 {
-  "name": "pi-minimal-plan-mode",
+  "name": "@pi-minimal/plan-mode",
   "version": "0.1.0",
   "description": "Minimal plan mode for pi: /plan toggles a read-only instruction in the system prompt.",
   "keywords": [
