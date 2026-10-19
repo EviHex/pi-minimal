@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { PROMPT_PLAN_MODE_OFF, PROMPT_PLAN_MODE_ON } from "./prompts.js";
+import { PROMPT_PLAN_MODE_OFF, PROMPT_PLAN_MODE_ON, PROMPT_PLAN_MODE_REMINDER } from "./prompts.js";
 import { loadSettings } from "./settings.js";
 
 export default function (pi: ExtensionAPI) {
@@ -27,5 +27,16 @@ export default function (pi: ExtensionAPI) {
 	// pi diffs the section into the transcript only when its text changes.
 	pi.on("before_agent_start", (event) => {
 		if (used) event.systemPromptOptions.sections.plan_mode = on ? PROMPT_PLAN_MODE_ON : PROMPT_PLAN_MODE_OFF;
+	});
+
+	// Short reminder (not stored in the transcript) to avoid the agent forgetting that plan mode is on during long runs.
+	pi.on("context", (event) => {
+		if (!on) return;
+		return {
+			messages: [
+				...event.messages,
+				{ role: "user", content: [{ type: "text", text: PROMPT_PLAN_MODE_REMINDER }], timestamp: Date.now() },
+			],
+		};
 	});
 }

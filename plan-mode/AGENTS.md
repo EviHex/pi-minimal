@@ -14,7 +14,9 @@ may now make changes. That is all.
 - Shortcut: default `ctrl+shift+p`, which pi reserves for `app.model.cycleBackward`;
   unbind that in `keybindings.json` or pi skips ours. Change it in settings.json:
   `"pi-minimal": { "plan-mode": { "keyboardShortcut": "ctrl+alt+p" } }`.
-- Toggling takes effect from the next user message, not mid-run.
+- The system prompt section changes from the next user message, not mid-run. While ON, a one-line
+  reminder is also appended to every LLM request (`context` event, not stored in the transcript),
+  so ON takes effect immediately; OFF stops the reminder at once.
 - Next steps if needed (not done yet): block `edit`/`write` in a `tool_call` hook,
   a read-only bash allowlist, a `sandbox-exec` sandbox.
 
