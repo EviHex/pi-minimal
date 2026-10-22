@@ -5,6 +5,8 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
 `npm run check`.
 
 - `plan-mode/` — `/plan` toggles a read-only instruction in the system prompt.
+- `companion-prompts/` — adds a per-extension prompt file to the system prompt only
+  when that extension is loaded.
 
 ## Conventions
 

@@ -1,0 +1,25 @@
+{
+  "name": "@pi-minimal/companion-prompts",
+  "version": "0.1.0",
+  "description": "Minimal companion prompts for pi: a prompt file is added to the system prompt only when its extension is loaded.",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.2.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "check": "tsc -p ."
+  }
+}
