@@ -1,0 +1,29 @@
+{
+  "name": "@pi-minimal/polyglot",
+  "version": "0.1.0",
+  "description": "A small language prompt reminder for Pi with a saved language choice.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "polyglot",
+    "language",
+    "i18n"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "langs",
+    "check.mjs"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "check": "node check.mjs --check"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.4.0"
+  }
+}
