@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const LANGUAGES = [
 	["en", "English"],
@@ -29,11 +29,18 @@ async function readPrompt(code: string): Promise<string> {
 	return prompt;
 }
 
+// Footer shows the native name; custom codes show the code itself.
+const setStatus = (ctx: ExtensionContext, on: boolean, code: string) =>
+	ctx.ui.setStatus("polyglot", on && code !== "off" ? `Polyglot ${LANGUAGES.find(({ value }) => value === code)?.label ?? code}` : undefined);
+
 export default function polyglot(pi: ExtensionAPI) {
 	let language = "zh-hans";
+	let showStatus = true;
 	const configPath = join(getAgentDir(), "polyglot.json");
 	pi.on("session_start", async (_event, ctx) => {
 		language = "zh-hans";
+		const settings = pi.getSettings() as { "pi-minimal"?: { polyglot?: { showStatus?: boolean } } };
+		showStatus = settings["pi-minimal"]?.polyglot?.showStatus !== false;
 		try {
 			const raw = await readFile(configPath, "utf8").catch((error) => {
 				if (error.code !== "ENOENT") throw error;
@@ -48,6 +55,7 @@ export default function polyglot(pi: ExtensionAPI) {
 		} catch (error) {
 			ctx.ui.notify(`Cannot restore language; using zh-hans: ${error}`, "error");
 		}
+		setStatus(ctx, showStatus, language);
 	});
 
 	pi.registerCommand("lang", {
@@ -70,6 +78,7 @@ export default function polyglot(pi: ExtensionAPI) {
 				return;
 			}
 			language = code;
+			setStatus(ctx, showStatus, language);
 			try {
 				await mkdir(getAgentDir(), { recursive: true });
 				await writeFile(configPath, JSON.stringify({ defaultLang: language }) + "\n", "utf8");

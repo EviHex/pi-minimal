@@ -62,7 +62,21 @@ Old saved values `zhs` and `zh` are read as `zh-hans` and `zh-hant` respectively
 Startup does not rewrite the config; the next `/lang <code>` saves the new code.
 Use the new tags in commands, and rename any custom Chinese prompt files to match.
 
-There is no settings panel, status bar, alias matching, language cycling, or
+## Footer
+
+The footer shows the current language, such as `Polyglot 简体中文`. Custom codes
+show the code (`Polyglot yue`). Nothing is shown when the language is `off`.
+The status is on by default. To hide it, add this to `settings.json`:
+
+```json
+{ "pi-minimal": { "polyglot": { "showStatus": false } } }
+```
+
+Settings are read at session start.
+
+## Not included
+
+There is no settings panel, alias matching, language cycling, or
 branch-specific history. `/polyglot`, `auto`, `config`, and `refresh` are removed.
 Old session language records and obsolete UI configuration fields are ignored.
 The next `/lang <code>` saves only `defaultLang`.

@@ -34,8 +34,11 @@ async function check() {
 		const handlers = new Map();
 		const commands = new Map();
 		const notices = [];
-		const ctx = { ui: { notify: (text, type) => notices.push({ text, type }) } };
+		const status = new Map();
+		const ctx = { ui: { notify: (text, type) => notices.push({ text, type }), setStatus: (key, text) => status.set(key, text) } };
+		let settings = {};
 		polyglot({
+			getSettings: () => settings,
 			on: (event, handler) => handlers.set(event, [handler]),
 			registerCommand: (name, options) => commands.set(name, options),
 		});
@@ -55,6 +58,7 @@ async function check() {
 
 		await start();
 		assert.equal(notices.length, 0); // A missing config is normal.
+		assert.equal(status.get("polyglot"), "Polyglot 简体中文"); // Footer status is on by default.
 		assert.match(await prompt(), /简体中文/);
 		const languages = [
 			["en", "English"], ["zh-hans", "简体中文"], ["zh-hant", "繁體中文"],
@@ -84,6 +88,7 @@ async function check() {
 		assert.equal((await saved()).defaultLang, "zh-hant");
 		assert.match(await prompt(), /繁體中文/);
 		await command("fr");
+		assert.equal(status.get("polyglot"), "Polyglot Français");
 		await command("");
 		assert.match(notices.at(-1).text, /Language: fr/);
 		for (const code of ["unknown", "../en", "/etc/passwd", "🇨🇳", "config"]) {
@@ -92,6 +97,7 @@ async function check() {
 			assert.match(await prompt(), /Français/); // Invalid selection leaves the language alone.
 		}
 		await command("off");
+		assert.equal(status.get("polyglot"), undefined);
 		assert.equal((await saved()).defaultLang, "off");
 		assert.equal(await prompt(), undefined);
 		await start();
@@ -136,7 +142,15 @@ async function check() {
 		assert.equal(await prompt(), "Edited without refresh");
 		await writeFile(join(custom, "yue.md"), "Cantonese prompt");
 		await command(" YUE ");
+		assert.equal(status.get("polyglot"), "Polyglot yue");
 		assert.equal(await prompt(), "Cantonese prompt");
+		settings = { "pi-minimal": { polyglot: { showStatus: false } } };
+		await start();
+		assert.equal(status.get("polyglot"), undefined);
+		await command("fr");
+		assert.equal(status.get("polyglot"), undefined);
+		await command("yue");
+		settings = {};
 		await writeFile(path, "---\nlabel: empty\n---\n");
 		await command("zh-hans");
 		assert.equal(notices.at(-1).type, "error");
