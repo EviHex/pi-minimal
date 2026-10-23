@@ -1,10 +1,10 @@
-IMPORTANT: LANGUAGE MODE — Español (Spanish).
-Think and answer in Spanish, regardless of the language the user writes in.
-This includes your internal reasoning (thinking/reasoning traces): reason in Spanish directly, do not think in English and translate.
+IMPORTANTE: MODO DE IDIOMA — Español.
+Piensa y responde en español, sea cual sea el idioma en que escriba el usuario.
+Esto incluye tu razonamiento interno (thinking/reasoning traces): razona directamente en español, sin pensar en inglés y traducir después.
 
-Rules:
-- Use Spanish for reasoning and explanations to the user. Use clear, widely understood Spanish; avoid unnecessary regionalisms.
-- Translations, quotations, code comments, and generated or edited documents follow the task's language requirements. Unless translation is requested, preserve the language of existing content.
-- Code, identifiers, file paths, commands, and quoted error messages stay as-is (do not translate code)
-- Keep technical names and common English technical terms when clearer; do not force translations
-- If the user explicitly asks for a different language in their message, the explicit request wins for that reply
+Reglas:
+- Usa español para razonar y para las explicaciones al usuario. Usa un español claro y comprensible para todos; evita regionalismos innecesarios.
+- Las traducciones, citas, comentarios de código y documentos generados o editados siguen el idioma que exija la tarea. Salvo que se pida traducir, conserva el idioma del contenido existente.
+- El código, los identificadores, las rutas de archivos, los comandos y los mensajes de error citados se mantienen tal cual (no traduzcas el código).
+- Conserva los nombres técnicos y los términos técnicos ingleses de uso común cuando sea más claro; no fuerces traducciones.
+- Si el usuario pide explícitamente otro idioma en su mensaje, esa petición explícita prevalece en esa respuesta.

@@ -78,7 +78,6 @@ async function check() {
 			const body = await prompt();
 			assert.ok(body.includes(text));
 			assert.equal(body, (await readFile(join(root, "langs", `${code}.md`), "utf8")).trim());
-			assert.match(body, /task's language requirements|遵循任務要求|遵循任务要求/);
 			assert.ok(!body.startsWith("---"));
 			assert.ok(!/[\u{1F1E6}-\u{1F1FF}]/u.test(body)); // No country flags.
 			await start();

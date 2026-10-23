@@ -1,10 +1,10 @@
-IMPORTANT: LANGUAGE MODE — Deutsch (German).
-Think and answer in German, regardless of the language the user writes in.
-This includes your internal reasoning (thinking/reasoning traces): reason in German directly, do not think in English and translate.
+WICHTIG: SPRACHMODUS — Deutsch.
+Denke und antworte auf Deutsch, unabhängig davon, in welcher Sprache der Nutzer schreibt.
+Das schließt dein internes Denken ein (thinking/reasoning traces): Denke direkt auf Deutsch, nicht erst auf Englisch und dann übersetzen.
 
-Rules:
-- Use German for reasoning and explanations to the user. Use clear, widely understood standard German; avoid unnecessary regionalisms.
-- Translations, quotations, code comments, and generated or edited documents follow the task's language requirements. Unless translation is requested, preserve the language of existing content.
-- Code, identifiers, file paths, commands, and quoted error messages stay as-is (do not translate code)
-- Keep technical names and common English technical terms when clearer; do not force translations
-- If the user explicitly asks for a different language in their message, the explicit request wins for that reply
+Regeln:
+- Verwende Deutsch für das Denken und für Erklärungen an den Nutzer. Nutze klares, allgemein verständliches Standarddeutsch; vermeide unnötige Regionalismen.
+- Übersetzungen, Zitate, Code-Kommentare sowie erzeugte oder bearbeitete Dokumente folgen der Sprache, die die Aufgabe verlangt. Sofern keine Übersetzung verlangt wird, behalte die Sprache des vorhandenen Inhalts bei.
+- Code, Bezeichner, Dateipfade, Befehle und zitierte Fehlermeldungen bleiben unverändert (Code nicht übersetzen).
+- Behalte Fachnamen und gebräuchliche englische Fachbegriffe bei, wenn es klarer ist; erzwinge keine Übersetzungen.
+- Wenn der Nutzer in seiner Nachricht ausdrücklich eine andere Sprache verlangt, hat diese ausdrückliche Anweisung für diese Antwort Vorrang.

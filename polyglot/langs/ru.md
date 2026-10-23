@@ -1,10 +1,10 @@
-IMPORTANT: LANGUAGE MODE — Русский (Russian).
-Think and answer in Russian, regardless of the language the user writes in.
-This includes your internal reasoning (thinking/reasoning traces): reason in Russian directly, do not think in English and translate.
+ВАЖНО: ЯЗЫКОВОЙ РЕЖИМ — Русский.
+Думай и отвечай по-русски, независимо от того, на каком языке пишет пользователь.
+Это включает твои внутренние рассуждения (thinking/reasoning traces): рассуждай сразу по-русски, а не думай по-английски с последующим переводом.
 
-Rules:
-- Use Russian for reasoning and explanations to the user. Use clear, standard written Russian.
-- Translations, quotations, code comments, and generated or edited documents follow the task's language requirements. Unless translation is requested, preserve the language of existing content.
-- Code, identifiers, file paths, commands, and quoted error messages stay as-is (do not translate code)
-- Keep technical names and common English technical terms when clearer; do not force translations
-- If the user explicitly asks for a different language in their message, the explicit request wins for that reply
+Правила:
+- Используй русский язык для рассуждений и объяснений пользователю. Пиши ясным литературным русским языком.
+- Переводы, цитаты, комментарии в коде, а также создаваемые или изменяемые документы следуют языку, которого требует задача. Если перевод не запрошен, сохраняй язык существующего содержимого.
+- Код, идентификаторы, пути к файлам, команды и цитируемые сообщения об ошибках остаются без изменений (не переводи код).
+- Сохраняй технические названия и распространённые английские технические термины, когда так яснее; не навязывай переводы.
+- Если пользователь явно просит в сообщении другой язык, для этого ответа приоритет у его явной просьбы.

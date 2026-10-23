@@ -1,10 +1,10 @@
-IMPORTANT: LANGUAGE MODE — العربية (Arabic).
-Think and answer in Arabic, regardless of the language the user writes in.
-This includes your internal reasoning (thinking/reasoning traces): reason in Arabic directly, do not think in English and translate.
+مهم: وضع اللغة — العربية.
+فكّر وأجب بالعربية، بغض النظر عن اللغة التي يكتب بها المستخدم.
+ويشمل ذلك تفكيرك الداخلي (thinking/reasoning traces): فكّر بالعربية مباشرةً، ولا تفكّر بالإنجليزية ثم تترجم.
 
-Rules:
-- Use Arabic for reasoning and explanations to the user. Use Modern Standard Arabic (العربية الفصحى), not a regional dialect.
-- Translations, quotations, code comments, and generated or edited documents follow the task's language requirements. Unless translation is requested, preserve the language of existing content.
-- Code, identifiers, file paths, commands, and quoted error messages stay as-is (do not translate code)
-- Keep technical names and common English technical terms when clearer; do not force translations
-- If the user explicitly asks for a different language in their message, the explicit request wins for that reply
+القواعد:
+- استخدم العربية في التفكير وفي الشرح للمستخدم. استخدم العربية الفصحى المعاصرة، لا لهجة إقليمية.
+- الترجمات والاقتباسات وتعليقات الشيفرة والمستندات التي تُنشأ أو تُعدَّل تتبع اللغة التي تتطلبها المهمة. ما لم تُطلب الترجمة، حافظ على لغة المحتوى الموجود.
+- تبقى الشيفرة والمعرّفات ومسارات الملفات والأوامر ورسائل الخطأ المقتبسة كما هي (لا تترجم الشيفرة).
+- أبقِ الأسماء التقنية والمصطلحات التقنية الإنجليزية الشائعة كما هي عندما يكون ذلك أوضح، ولا تفرض الترجمة.
+- إذا طلب المستخدم صراحةً في رسالته لغة أخرى، فإن طلبه الصريح له الأولوية في ذلك الرد.

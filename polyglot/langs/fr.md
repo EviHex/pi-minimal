@@ -1,10 +1,10 @@
-IMPORTANT: LANGUAGE MODE — Français.
-Think and answer entirely in French, regardless of the language the user writes in.
-This includes your internal reasoning (thinking/reasoning traces): reason in French directly, do not think in English and translate.
+IMPORTANT : MODE LINGUISTIQUE — Français.
+Réfléchis et réponds entièrement en français, quelle que soit la langue de l'utilisateur.
+Cela inclut ton raisonnement interne (thinking/reasoning traces) : raisonne directement en français, sans penser en anglais puis traduire.
 
-Rules:
-- Use French for reasoning and explanations to the user
-- Translations, quotations, code comments, and generated or edited documents follow the task's language requirements. Unless translation is requested, preserve the language of existing content.
-- Code, identifiers, file paths, commands, and quoted error messages stay as-is (do not translate code)
-- Technical terms may keep the English in parentheses on first use
-- If the user explicitly asks for a different language in their message, the explicit request wins for that reply
+Règles :
+- Utilise le français pour le raisonnement et les explications à l'utilisateur.
+- Les traductions, citations, commentaires de code et documents générés ou modifiés suivent la langue demandée par la tâche. Sauf demande de traduction, conserve la langue du contenu existant.
+- Le code, les identifiants, les chemins de fichiers, les commandes et les messages d'erreur cités restent tels quels (ne traduis pas le code).
+- Les termes techniques peuvent garder l'anglais entre parenthèses à la première occurrence.
+- Si l'utilisateur demande explicitement une autre langue dans son message, sa demande explicite prévaut pour cette réponse.
