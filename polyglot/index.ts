@@ -98,4 +98,13 @@ export default function polyglot(pi: ExtensionAPI) {
 			ctx.ui.notify(`Language prompt not applied: ${error}`, "error");
 		}
 	});
+	// The summarizer cannot see our system section, so tell it through the conversation.
+	// shortcut: mutates preparation in place (undocumented), switch to a customInstructions result if Pi adds one.
+	pi.on("session_before_compact", (event) => {
+		event.preparation.messagesToSummarize.push({
+			role: "user",
+			content: [{ type: "text", text: "Summary note: do not record response-language preferences or language instructions. They are injected separately." }],
+			timestamp: Date.now(),
+		});
+	});
 }

@@ -43,7 +43,7 @@ async function check() {
 			registerCommand: (name, options) => commands.set(name, options),
 		});
 		assert.deepEqual([...commands.keys()], ["lang"]);
-		assert.deepEqual([...handlers.keys()], ["session_start", "before_agent_start"]);
+		assert.deepEqual([...handlers.keys()], ["session_start", "before_agent_start", "session_before_compact"]);
 		const command = (args) => commands.get("lang").handler(args, ctx);
 		const configPath = join(dir, "polyglot.json");
 		const saved = async () => JSON.parse(await readFile(configPath, "utf8"));
@@ -178,6 +178,9 @@ async function check() {
 		assert.match(result.systemPromptOptions.sections.polyglot_language, /简体中文/);
 		assert.equal(result.systemPromptOptions.sections.plan_mode, "Plan instructions");
 		assert.equal(result.systemPromptOptions.forceSystemPrompt, undefined);
+		const preparation = { messagesToSummarize: [] };
+		handlers.get("session_before_compact")[0]({ preparation });
+		assert.match(preparation.messagesToSummarize[0].content[0].text, /language/);
 		console.log(`polyglot --check: passed (Pi ${pi.VERSION}; commands, prompts, saved choice, off, errors, section composition)`);
 	} finally {
 		if (originalDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
