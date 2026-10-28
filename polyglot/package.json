@@ -26,5 +26,10 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=1.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/EviHex/pi-minimal.git",
+    "directory": "polyglot"
   }
 }

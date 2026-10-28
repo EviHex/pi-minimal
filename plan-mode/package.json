@@ -21,5 +21,10 @@
   },
   "scripts": {
     "check": "tsc -p ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/EviHex/pi-minimal.git",
+    "directory": "plan-mode"
   }
 }
