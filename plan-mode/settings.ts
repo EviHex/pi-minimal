@@ -9,7 +9,7 @@ export interface PlanModeSettings {
 
 /** Fallback when keys are not configured */
 const DEFAULT_SETTINGS: PlanModeSettings = {
-	keyboardShortcut: "ctrl+shift+p"
+	keyboardShortcut: "ctrl+alt+p"
 };
 
 export function loadSettings(pi: ExtensionAPI): PlanModeSettings {

@@ -17,8 +17,8 @@ the file. Settings are read at session start (use `/reload`).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `keyboardShortcut` | string (key id) | `ctrl+shift+p` | Shortcut that toggles plan mode. The default is reserved by pi for `app.model.cycleBackward`: unbind that in `keybindings.json`, or pi skips this shortcut. |
+| `keyboardShortcut` | string (key id) | `ctrl+alt+p` | Shortcut that toggles plan mode. No pi default uses it. Some terminals need Alt/Option set as Meta, and multiplexers such as tmux may drop modifiers. If it does not work, pick another key. |
 
 ```json
-{ "pi-minimal": { "plan-mode": { "keyboardShortcut": "ctrl+alt+p" } } }
+{ "pi-minimal": { "plan-mode": { "keyboardShortcut": "ctrl+alt+o" } } }
 ```
