@@ -2,7 +2,8 @@
 
 Collection of small, single-purpose pi extensions. Each subfolder is its own npm
 package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
-`npm run check`.
+`npm run check`. The root `package.json` is an npm workspace: run `npm install` and
+`npm run check` at the root (or `npm run check -w <name>` for one package).
 
 - `plan-mode/` — `/plan` toggles a read-only instruction in the system prompt.
 - `companion-prompts/` — adds a per-extension prompt file to the system prompt only

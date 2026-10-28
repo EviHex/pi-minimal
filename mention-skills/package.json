@@ -1,6 +1,6 @@
 {
   "name": "@pi-minimal/mention-skills",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Minimal $ mentions for pi: autocomplete skills and prompt templates, and point the agent to their files.",
   "keywords": [
     "pi-package",

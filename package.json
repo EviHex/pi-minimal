@@ -1,0 +1,13 @@
+{
+  "name": "pi-minimal",
+  "private": true,
+  "workspaces": [
+    "plan-mode",
+    "companion-prompts",
+    "polyglot",
+    "mention-skills"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces --if-present"
+  }
+}
