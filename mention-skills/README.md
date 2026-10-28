@@ -10,7 +10,7 @@ and the agent reads the file itself.
 ## Install
 
 ```sh
-pi install ~/Code/pi-minimal/mention-skills
+pi install npm:@pi-minimal/mention-skills
 ```
 
 ## Settings

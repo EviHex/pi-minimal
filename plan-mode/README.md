@@ -6,7 +6,7 @@ read-only and output a plan. Nothing is blocked: the agent is trusted to obey.
 ## Install
 
 ```sh
-pi install ~/Code/pi-minimal/plan-mode
+pi install npm:@pi-minimal/plan-mode
 ```
 
 ## Settings
