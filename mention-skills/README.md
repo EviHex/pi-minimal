@@ -29,16 +29,11 @@ the file. Settings are read at session start (use `/reload`).
 
 ## Behavior
 
-- Names come from the `skill` and `prompt` commands of pi, rebuilt at every
-  session start. A skill wins on a name clash.
+- Names come from your skills and prompt templates. A skill wins on a name clash.
 - A mention is `$` at line start or after whitespace or `( [ { <`, then `[\w-]+`.
   Unknown names (`$HOME`, `$1`) stay as they are.
-- Only the copy sent to the LLM changes. The chat and the session keep `$name`.
-- A fixed `mention_skills` system prompt section tells the agent to read the file
-  unless it already did, then follow it.
+- Like `@` for files, the agent decides when to read the file.
 
 ## Limits
 
-- The agent may skip reading the file (same as `@`).
-- After compaction, the summary only has `$name`.
 - Prompt templates get no arguments. Write them after the name: `$vocabulary word`.
