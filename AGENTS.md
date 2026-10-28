@@ -8,6 +8,8 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
 - `companion-prompts/` — adds a per-extension prompt file to the system prompt only
   when that extension is loaded.
 - `polyglot/` — `/lang` selects a saved language reminder, with tag completion.
+- `mention-skills/` — `$` autocompletes skills and prompt templates; the agent gets
+  their file paths.
 
 ## Conventions
 

@@ -14,7 +14,7 @@ whole system prompt: that can hide other extensions' sections from the model.
 - New/resumed sessions restore that state; legacy saved zhs/zh map to
   zh-hans/zh-hant. No branch-specific history.
 - Footer status `Polyglot <native name>` (key `polyglot`), hidden when off.
-  Disable with `"pi-minimal": { "polyglot": { "showStatus": false } }` in settings.json.
+  Setting `showStatus`: see `README.md` (single source).
 - `session_before_compact` appends a note to the messages being summarized so summaries omit language preferences (relies on Pi sharing `preparation`; undocumented).
 - No tools, shortcuts, settings UI, aliases or language cycling.
 - Prompt files reload before each run. Restart Pi after changing the extension.

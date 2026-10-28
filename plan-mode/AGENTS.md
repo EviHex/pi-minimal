@@ -11,9 +11,8 @@ may now make changes. That is all.
   slips, not a determined or confused agent.
 - State is in memory: it resets on restart, /reload, and session switch
   (/new, /resume, /fork).
-- Shortcut: default `ctrl+shift+p`, which pi reserves for `app.model.cycleBackward`;
-  unbind that in `keybindings.json` or pi skips ours. Change it in settings.json:
-  `"pi-minimal": { "plan-mode": { "keyboardShortcut": "ctrl+alt+p" } }`.
+- Shortcut: default `ctrl+shift+p` conflicts with pi's `app.model.cycleBackward`.
+  Settings and the conflict note are in `README.md` (single source).
 - The system prompt section changes from the next user message, not mid-run. While ON, a one-line
   reminder is also appended to every LLM request (`context` event, not stored in the transcript),
   so ON takes effect immediately; OFF stops the reminder at once.

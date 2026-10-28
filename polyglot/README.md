@@ -62,17 +62,28 @@ Old saved values `zhs` and `zh` are read as `zh-hans` and `zh-hant` respectively
 Startup does not rewrite the config; the next `/lang <code>` saves the new code.
 Use the new tags in commands, and rename any custom Chinese prompt files to match.
 
-## Footer
+## Settings
 
-The footer shows the current language, such as `Polyglot 简体中文`. Custom codes
-show the code (`Polyglot yue`). Nothing is shown when the language is `off`.
-The status is on by default. To hide it, add this to `settings.json`:
+Put settings in `~/.pi/agent/settings.json` (global) or `.pi/settings.json`
+(project), under `"pi-minimal"."polyglot"`. Merge the keys; do not overwrite the
+file. Settings are read at session start (use `/reload`).
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `showStatus` | boolean | `true` | Show the current language in the footer. |
 
 ```json
 { "pi-minimal": { "polyglot": { "showStatus": false } } }
 ```
 
-Settings are read at session start.
+The language choice itself is not a setting. `/lang` saves it as `defaultLang` in
+`<agent-dir>/polyglot.json`.
+
+## Footer
+
+The footer shows the current language, such as `Polyglot 简体中文`. Custom codes
+show the code (`Polyglot yue`). Nothing is shown when the language is `off`.
+The status is on by default. To hide it, see [Settings](#settings).
 
 ## Not included
 
