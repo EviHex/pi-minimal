@@ -6,9 +6,11 @@ or interfering with other extensions such as plan-mode.
 
 ## Install
 
+Not on npm yet. Clone the repo and install from the folder:
+
 ```sh
-# Load directly from the local pi-minimal checkout:
-pi install ~/Code/pi-minimal/polyglot
+git clone https://github.com/EviHex/pi-minimal
+pi install ./pi-minimal/polyglot
 ```
 
 ## Languages
