@@ -12,6 +12,23 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
 - `mention-skills/` — `$` autocompletes skills and prompt templates; the agent gets
   their file paths.
 
+## Publishing
+
+A package is published when its `package.json` has all of this (copy from `mention-skills`):
+
+- `license: "MIT"` and a `LICENSE` file in the package folder (copy the root one).
+- `files`: only what the extension needs at run time (sources, `README.md`, `LICENSE`,
+  data folders). Not `AGENTS.md`, `tsconfig.json`, or tests.
+- `publishConfig: { "access": "public" }`. Scoped packages are private without it.
+- `repository` with `url: "git+https://github.com/EviHex/pi-minimal.git"` and `directory`.
+- `peerDependencies` on pi packages, with `*` or a minimum version.
+- A `README.md` with `## Install` and `## Settings`. Until the first publish, `## Install`
+  says "Not on npm yet" and shows the clone command. Update the table in the root
+  `README.md` at the same time.
+
+Check the file list with `npm pack -w <name> --dry-run`. Bump the version before each
+publish: `npm publish -w <name>`.
+
 ## Conventions
 
 - Keep each extension minimal. No shared library between them: copy 3 lines
