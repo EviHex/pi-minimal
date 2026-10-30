@@ -26,5 +26,14 @@
     "type": "git",
     "url": "git+https://github.com/EviHex/pi-minimal.git",
     "directory": "companion-prompts"
+  },
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

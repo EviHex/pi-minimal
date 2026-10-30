@@ -13,6 +13,7 @@
   "files": [
     "index.ts",
     "README.md",
+    "LICENSE",
     "langs",
     "check.mjs"
   ],
@@ -31,5 +32,8 @@
     "type": "git",
     "url": "git+https://github.com/EviHex/pi-minimal.git",
     "directory": "polyglot"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
