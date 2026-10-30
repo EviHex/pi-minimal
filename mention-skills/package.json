@@ -1,6 +1,6 @@
 {
   "name": "@pi-minimal/mention-skills",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Minimal $ mentions for pi: autocomplete skills and prompt templates, and point the agent to their files.",
   "keywords": [
     "pi-package",
@@ -26,7 +26,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/EviHex/pi-minimal.git",
+    "url": "git+https://github.com/EviHex/pi-minimal.git",
     "directory": "mention-skills"
   },
   "license": "MIT",

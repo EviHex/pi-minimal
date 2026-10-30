@@ -1,6 +1,6 @@
 {
   "name": "@pi-minimal/companion-prompts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Minimal companion prompts for pi: a prompt file is added to the system prompt only when its extension is loaded.",
   "keywords": [
     "pi-package",
@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/EviHex/pi-minimal.git",
+    "url": "git+https://github.com/EviHex/pi-minimal.git",
     "directory": "companion-prompts"
   }
 }

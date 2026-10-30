@@ -1,6 +1,6 @@
 {
   "name": "@pi-minimal/polyglot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A small language prompt reminder for Pi with a saved language choice.",
   "keywords": [
     "pi-package",
@@ -29,7 +29,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/EviHex/pi-minimal.git",
+    "url": "git+https://github.com/EviHex/pi-minimal.git",
     "directory": "polyglot"
   }
 }
