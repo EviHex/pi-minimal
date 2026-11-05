@@ -21,7 +21,7 @@ Others are still in development or being tested, and could be published or delet
 | [`plan-mode`](./plan-mode)                 | `/plan` toggles a read-only instruction in the system prompt.                   | `pi install npm:@pi-minimal/plan-mode`      |
 | [`mention-skills`](./mention-skills)       | `$` autocompletes skills and prompt templates. The agent gets their file paths. | `pi install npm:@pi-minimal/mention-skills` |
 | [`polyglot`](./polyglot)                   | `/lang` selects a saved language reminder.                                      | From source (not yet published)             |
-| [`companion-prompts`](./companion-prompts) | Adds a prompt file to the system prompt only when a given extension is loaded.  | From source (not yet published)             |
+| [`companion-prompts`](./companion-prompts) | Adds a prompt file to the system prompt only when its rule matches.            | From source (not yet published)             |
 
 To try one without installing it: `pi -e npm:@pi-minimal/<extension-name>`.
 

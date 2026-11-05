@@ -1,8 +1,8 @@
 # @pi-minimal/companion-prompts
 
-Personal prompts per extension. A prompt file is added to the system prompt only
-when its extension is loaded. Disable the extension and its prompt disappears,
-so your `AGENTS.md` never holds instructions for a missing extension.
+Personal prompts with conditions. A rule decides when a prompt file is added to the
+system prompt: for example, only when a given extension is loaded, or only under
+a given directory. Your `AGENTS.md` never holds instructions that do not apply.
 
 ## Install
 
@@ -15,30 +15,42 @@ pi install ./pi-minimal/companion-prompts
 
 ## Usage
 
-Prompt files live in `~/.pi/agent/companion-prompts/`. Each file names one
-extension in its frontmatter with `extension:`; the text below it is the prompt.
+Everything lives in `~/.pi/agent/companion-prompts/`: one `rules.ts` file, and the
+prompt files (`.md`) it names.
 
-```md
----
-extension: npm:@gotgenes/pi-subagents
----
-Always run sub-agents in the background (`run_in_background: true`).
+```ts
+// ~/.pi/agent/companion-prompts/rules.ts
+import { homedir } from "node:os";
+
+const work = `${homedir()}/work`;
+
+export default [
+	// Fork-proof: match the extension by a regex.
+	{ file: "subagents.md", when: (c) => c.extensions.some((e) => /pi-subagents/.test(e)) },
+	// Only under ~/work (not ~/work-backup).
+	{ file: "work.md", when: (c) => c.cwd === work || c.cwd.startsWith(`${work}/`) },
+];
 ```
 
-- The `extension:` value is the extension `source` in `settings.json`, for example
-  `npm:pi-lens`. Auto-discovered extensions in `~/.pi/agent/extensions/` all have the
-  source `auto`; use their file path instead. The file name does not matter.
-- The match is exact. A package by another author with a similar name does not match.
-- The prompt goes in a `companion_<file name>` system prompt section, once. Keep it short.
-- Files are read at session start (use `/reload` after a change).
+`when(c)` gets:
 
-### Files this extension creates
+- `c.cwd`: the session's working directory.
+- `c.extensions`: the extensions loaded in this session, as their `source` in
+  `settings.json` (for example `npm:pi-lens`). Auto-discovered extensions in
+  `~/.pi/agent/extensions/` all have the source `auto`, so they appear as their file
+  path. The list holds the extensions enabled in your pi config (`pi config`), plus
+  the ones that registered a tool or a command (covers `-e <path>`).
 
-At session start, for each enabled extension that has no file yet, the extension
-**creates a stub** in `~/.pi/agent/companion-prompts/`: a file with only the
-`extension:` line and no text. Fill in the text to use it; empty files are ignored.
-It never changes or deletes an existing file. Stubs for removed extensions stay until
-you delete them.
+Combine conditions with `&&`, `||` and `!`. Reuse a condition as a plain function.
+
+A matching prompt goes in a `<companion_<file name>>` system prompt section, once.
+Keep it short.
+
+Rules are evaluated at session start. Use `/reload` after a change. `rules.ts` is
+loaded like a pi extension, so TypeScript works as is.
+
+An error (in `rules.ts`, a `when()`, or a missing `.md` file) is shown as a notification. A
+rule that throws is skipped; the other rules still apply.
 
 ## Settings
 

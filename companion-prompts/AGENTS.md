@@ -1,35 +1,27 @@
 # pi-minimal-companion-prompts
 
-Personal prompts per extension. Each file in `~/.pi/agent/companion-prompts/`
-names one extension in its frontmatter; the text is added to the system prompt
-(section `companion_<file name>`) only when that extension is loaded.
-
-```md
----
-extension: npm:@gotgenes/pi-subagents
----
-Always run sub-agents in the background.
-```
+Personal prompts with conditions. `~/.pi/agent/companion-prompts/rules.ts` exports
+`{ file, when }[]`; each `.md` file whose `when(c)` returns true is added to the
+system prompt (section `companion_<file name>`). See `README.md` for the format.
 
 ## Scope
 
-- Matching is exact on the `extension:` id, never on the file name. The id is the
-  `source` in `settings.json` (for example `npm:pi-lens`). Auto-discovered
-  extensions all have the source `auto`, so their id is the file path.
-- "Loaded" means: enabled in the resolved pi config (`DefaultPackageManager.resolve()`,
-  same logic as `pi config`; this covers extensions that only use hooks), or it
-  registered a tool or command (`sourceInfo`; this covers `-e <path>`).
-- At `session_start`, a stub (frontmatter only, empty text) is created for each
-  enabled extension that has no file yet. This is the only write; existing files
-  are never changed. Stubs stay after an extension is removed; delete them by hand.
-- Files without `extension:` and files with empty text are ignored.
-- Not handled: `--no-extensions`; extensions that are enabled but failed to load.
-- Files are read at `session_start`. Use `/reload` after a change.
-- System prompt section: one copy in the context, the prompt cache stays valid.
-  Keep the files short.
+- `c` has only `cwd` and `extensions`. No helpers: rules use plain TS (regex,
+  `startsWith`, `&&`).
+- `c.extensions`: ids (`source`, or the path when the source is `auto`) of the
+  extensions enabled in the resolved pi config (`DefaultPackageManager.resolve()`,
+  same logic as `pi config`; covers hook-only extensions), plus the ones that
+  registered a tool or command (`sourceInfo`; covers `-e <path>`).
+- Not handled: `--no-extensions`; extensions that are enabled but failed to load;
+  `-e` extensions that register their tools only after `session_start` started.
+- Rules are evaluated once at `session_start`: cwd and the loaded extensions only
+  change with a new session or `/reload`. `before_agent_start` only copies the
+  cached sections.
+- `rules.ts` is loaded with `import()`, which pi's jiti rewrites (so full TS works).
+  The `?t=` query skips jiti's cache, which pi reuses on `/new` and `/resume`.
+- No write anywhere. No settings, no commands.
 - Risk: `DefaultPackageManager` is a public SDK export, but not an extension API.
   If a pi upgrade breaks it, fix `session_start`.
-- No settings, no commands.
 
 ## Files
 
