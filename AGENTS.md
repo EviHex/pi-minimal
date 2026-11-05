@@ -31,6 +31,8 @@ publish: `npm publish -w <name>`.
 
 ## Conventions
 
+- This repo is open source and general purpose. In code, prompts, docs and
+  examples, never name the maintainer's company, and never assume who the user is.
 - Keep each extension minimal. No shared library between them: copy 3 lines
   instead of adding a dependency.
 - Settings live in `settings.json` under `"pi-minimal"."<name>"`. Extensions only
