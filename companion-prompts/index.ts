@@ -4,12 +4,28 @@ import { pathToFileURL } from "node:url";
 import { DefaultPackageManager, SettingsManager, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // What a rule's `when` receives.
-type RuleContext = { cwd: string; extensions: string[] };
-// One entry of the array that rules.ts exports.
-type Rule = { file: string; when: (context: RuleContext) => boolean };
+type RuleContext = { cwd: string; extensions: string[]; mcpServers: string[] };
+// One entry of the array that rules.ts exports. The prompt is a markdown file or an inline text.
+type Rule = { when: (context: RuleContext) => boolean } & ({ file: string } | { name: string; text: string });
 
 // Identity of an extension. Auto-discovered ones all have the source "auto", so use their path.
 const extensionId = (source: string, path: string) => (source === "auto" ? path : source);
+
+// Names of the MCP servers enabled in mcp.json. A project entry overrides the user one with the same name.
+function enabledMcpServers(agentDir: string, cwd: string, projectTrusted: boolean): string[] {
+	const read = (file: string): Record<string, { enabled?: boolean }> => {
+		try {
+			return JSON.parse(readFileSync(file, "utf8")).mcpServers ?? {};
+		} catch {
+			return {}; // Missing file. pi itself reports an invalid mcp.json.
+		}
+	};
+	const servers = { ...read(join(agentDir, "mcp.json")) };
+	if (projectTrusted) {
+		for (const [name, config] of Object.entries(read(join(cwd, ".pi", "mcp.json")))) servers[name] = { ...servers[name], ...config };
+	}
+	return Object.keys(servers).filter((name) => servers[name].enabled !== false);
+}
 
 export default function (pi: ExtensionAPI) {
 	const agentDir = getAgentDir();
@@ -29,7 +45,11 @@ export default function (pi: ExtensionAPI) {
 		const enabledIds = extensions.filter((ext) => ext.enabled).map((ext) => extensionId(ext.metadata.source, ext.path));
 		// Extensions that registered a tool or command. This also covers `-e <path>`, which the config does not list.
 		const registeredIds = [...pi.getAllTools(), ...pi.getCommands()].map(({ sourceInfo }) => extensionId(sourceInfo.source, sourceInfo.path));
-		const context: RuleContext = { cwd: ctx.cwd, extensions: [...new Set([...enabledIds, ...registeredIds])] };
+		const context: RuleContext = {
+			cwd: ctx.cwd,
+			extensions: [...new Set([...enabledIds, ...registeredIds])],
+			mcpServers: enabledMcpServers(agentDir, ctx.cwd, ctx.isProjectTrusted()),
+		};
 
 		let rules: Rule[];
 		try {
@@ -41,13 +61,14 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		// A broken rule is reported and skipped; the other rules still apply.
-		for (const { file, when } of rules) {
+		for (const rule of rules) {
 			try {
-				if (!when(context)) continue;
-				const sectionName = `companion_${file.replace(/\.md$/, "")}`;
-				matchedSections[sectionName] = readFileSync(join(promptsDir, file), "utf8").trim();
+				if (!rule.when(context)) continue;
+				const [name, text] =
+					"file" in rule ? [rule.file.replace(/\.md$/, ""), readFileSync(join(promptsDir, rule.file), "utf8")] : [rule.name, rule.text];
+				matchedSections[`companion_${name}`] = text.trim();
 			} catch (error) {
-				ctx.ui.notify(`companion-prompts: ${file}: ${(error as Error).message}`, "error");
+				ctx.ui.notify(`companion-prompts: ${"file" in rule ? rule.file : rule.name}: ${(error as Error).message}`, "error");
 			}
 		}
 	});

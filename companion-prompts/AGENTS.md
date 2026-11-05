@@ -1,17 +1,22 @@
 # pi-minimal-companion-prompts
 
 Personal prompts with conditions. `~/.pi/agent/companion-prompts/rules.ts` exports
-`{ file, when }[]`; each `.md` file whose `when(c)` returns true is added to the
-system prompt (section `companion_<file name>`). See `README.md` for the format.
+`{ file | name+text, when }[]`; each prompt (a `.md` file, or an inline `text`) whose
+`when(c)` returns true is added to the
+system prompt (section `companion_<file name or name>`). See `README.md` for the format.
 
 ## Scope
 
-- `c` has only `cwd` and `extensions`. No helpers: rules use plain TS (regex,
+- `c` has only `cwd`, `extensions` and `mcpServers`. No helpers: rules use plain TS (regex,
   `startsWith`, `&&`).
 - `c.extensions`: ids (`source`, or the path when the source is `auto`) of the
   extensions enabled in the resolved pi config (`DefaultPackageManager.resolve()`,
   same logic as `pi config`; covers hook-only extensions), plus the ones that
   registered a tool or command (`sourceInfo`; covers `-e <path>`).
+- `c.mcpServers`: names in `mcp.json` (user file, plus the project file when
+  `ctx.isProjectTrusted()`) that are not `enabled: false`. Read from the files because
+  MCP tools are not registered yet at `session_start` (checked: none in `getAllTools()`),
+  and pi exports no config loader.
 - Not handled: `--no-extensions`; extensions that are enabled but failed to load;
   `-e` extensions that register their tools only after `session_start` started.
 - Rules are evaluated once at `session_start`: cwd and the loaded extensions only

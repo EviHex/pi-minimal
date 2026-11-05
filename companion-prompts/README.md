@@ -16,7 +16,7 @@ pi install ./pi-minimal/companion-prompts
 ## Usage
 
 Everything lives in `~/.pi/agent/companion-prompts/`: one `rules.ts` file, and the
-prompt files (`.md`) it names.
+prompt files (`.md`) it names. A short prompt can be written in `rules.ts` itself.
 
 ```ts
 // ~/.pi/agent/companion-prompts/rules.ts
@@ -29,6 +29,10 @@ export default [
 	{ file: "subagents.md", when: (c) => c.extensions.some((e) => /pi-subagents/.test(e)) },
 	// Only under ~/work (not ~/work-backup).
 	{ file: "work.md", when: (c) => c.cwd === work || c.cwd.startsWith(`${work}/`) },
+	// Short prompt written inline. `name` is its section name; always on.
+	{ name: "sd", text: "Use `sd` instead of `sed`.", when: () => true },
+	// Only when an MCP server named "github" is enabled.
+	{ name: "github", text: "Prefer the GitHub MCP over `gh`.", when: (c) => c.mcpServers.includes("github") },
 ];
 ```
 
@@ -40,10 +44,13 @@ export default [
   `~/.pi/agent/extensions/` all have the source `auto`, so they appear as their file
   path. The list holds the extensions enabled in your pi config (`pi config`), plus
   the ones that registered a tool or a command (covers `-e <path>`).
+- `c.mcpServers`: the names of the MCP servers enabled in `~/.pi/agent/mcp.json` (and
+  in `.pi/mcp.json` when the project is trusted). It says "configured", not
+  "connected": servers connect in the background, after the rules ran.
 
 Combine conditions with `&&`, `||` and `!`. Reuse a condition as a plain function.
 
-A matching prompt goes in a `<companion_<file name>>` system prompt section, once.
+A matching prompt goes in a `<companion_<file name or name>>` system prompt section, once.
 Keep it short.
 
 Rules are evaluated at session start. Use `/reload` after a change. `rules.ts` is
