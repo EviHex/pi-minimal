@@ -2,6 +2,7 @@
   "name": "@pi-minimal/companion-prompts",
   "version": "0.2.0",
   "description": "Minimal companion prompts for pi: a prompt file is added to the system prompt only when its rule matches.",
+  "type": "module",
   "keywords": [
     "pi-package",
     "pi-extension"

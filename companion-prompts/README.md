@@ -53,6 +53,9 @@ Combine conditions with `&&`, `||` and `!`. Reuse a condition as a plain functio
 A matching prompt goes in a `<companion_<file name or name>>` system prompt section, once.
 Keep it short.
 
+One more short section, `<companion-prompts>`, is always added: it tells the agent
+where `rules.ts` and this README are, so it can help you write rules.
+
 Rules are evaluated at session start. Use `/reload` after a change. `rules.ts` is
 loaded like a pi extension, so TypeScript works as is.
 

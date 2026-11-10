@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DefaultPackageManager, SettingsManager, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // What a rule's `when` receives.
@@ -33,6 +33,9 @@ export default function (pi: ExtensionAPI) {
 	const rulesFile = join(promptsDir, "rules.ts");
 	// System prompt sections of the matching rules: section name -> prompt text.
 	let matchedSections: Record<string, string> = {};
+	// Always on, so the agent can find and edit the rules. Not "companion_*": that would clash with a rule name.
+	const readme = join(dirname(fileURLToPath(import.meta.url)), "README.md");
+	const intro = `companion_* sections are conditional prompts from ${rulesFile}. To edit them, read ${readme} first.`;
 
 	// cwd and the loaded extensions change only with a new session or /reload, so evaluate the rules once here.
 	pi.on("session_start", async (_event, ctx) => {
@@ -75,6 +78,6 @@ export default function (pi: ExtensionAPI) {
 
 	// Add the cached sections to the system prompt of every run.
 	pi.on("before_agent_start", (event) => {
-		Object.assign(event.systemPromptOptions.sections, matchedSections);
+		Object.assign(event.systemPromptOptions.sections, { "companion-prompts": intro }, matchedSections);
 	});
 }

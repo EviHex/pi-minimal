@@ -24,6 +24,8 @@ system prompt (section `companion_<file name or name>`). See `README.md` for the
   cached sections.
 - `rules.ts` is loaded with `import()`, which pi's jiti rewrites (so full TS works).
   The `?t=` query skips jiti's cache, which pi reuses on `/new` and `/resume`.
+- One always-on section `companion-prompts` (hyphen, so no rule name can clash) tells
+  the agent where `rules.ts` and this `README.md` are. About 30 tokens; keep it short.
 - No write anywhere. No settings, no commands.
 - Risk: `DefaultPackageManager` is a public SDK export, but not an extension API.
   If a pi upgrade breaks it, fix `session_start`.
