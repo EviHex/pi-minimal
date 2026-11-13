@@ -16,6 +16,19 @@ project/            <- cwd
 │       └── users.ts
 ```
 
+A file **outside** the working directory gets the same, up to the root of its git
+repository (the directory with `.git`). That root's own file is included, since pi did
+not load it. A file in no git repository gets nothing.
+
+```text
+~/notes/            <- cwd
+~/work/app/         a git repository
+├── AGENTS.md       loaded when the agent touches anything in ~/work/app/
+└── lib/
+    ├── AGENTS.md   same, for lib/
+    └── db.ts
+```
+
 ## Install
 
 Not on npm yet. Clone the repo and install from the folder:
@@ -48,6 +61,8 @@ characters per file), fork and edit the constants at the top of `index.ts`.
   are not applied.
 - A symlink that points outside the project is ignored, and so is a symlink to a file
   that pi loaded at startup.
+- Paths are shown relative to the working directory, and absolute (symlinks resolved)
+  outside it.
 - Skipped: anything under `node_modules` (package files are not your project's rules),
   and pi's agent directory (`~/.pi/agent`) when cwd contains it, since pi loaded its
   `AGENTS.md` at startup.
@@ -55,7 +70,7 @@ characters per file), fork and edit the constants at the top of `index.ts`.
 
 ## Limits
 
-- Only directories below the working directory. A path outside it does nothing.
+- Outside the working directory, only files in a git repository.
 - Only `read`, `edit` and `write` (also from codemode). Shell commands, `ls`/`find`/`grep`
   and MCP tools are not watched.
 - A partial read (`offset`/`limit`) of an instruction file counts as seen.

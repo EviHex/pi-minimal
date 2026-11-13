@@ -17,14 +17,16 @@ type Extra = { toolCallId?: string; parentToolCallId?: string; isError?: boolean
  * A fake pi: collects the handlers, then calls them like pi would. cwd is a temp directory
  * reached through a symlink, so tests fail if a path is compared before it is made real.
  * `agentDir`, relative to cwd, is set as pi's agent dir before the extension loads.
+ * `sub` puts cwd in that subdirectory of the temp directory (to test a repo around cwd).
  *
  * `history` plays the session: every top-level result is stored in it, with the content and
  * details the extension returned. Tests edit it to play /tree and compaction.
  */
-function setup(agentDir?: string) {
+function setup({ agentDir, sub = "" }: { agentDir?: string; sub?: string } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "nested-context-"));
-	const cwd = `${dir}-link`;
-	symlinkSync(dir, cwd);
+	symlinkSync(dir, `${dir}-link`);
+	const cwd = join(`${dir}-link`, sub);
+	mkdirSync(cwd, { recursive: true });
 	if (agentDir) mkdirSync(join(cwd, agentDir)); // It always exists in real pi.
 
 	let history: Message[] = [];
@@ -61,7 +63,7 @@ function setup(agentDir?: string) {
 	/** Only the text added to the result (block 2), or `undefined` if nothing was added. */
 	const added = (toolName: string, path: string, extra?: Extra) =>
 		call(toolName, path, extra)?.content?.[1]?.text;
-	/** Create a file (and its directories) under cwd. */
+	/** Create a file (and its directories), relative to cwd. */
 	const file = (path: string, text: string) => {
 		mkdirSync(join(cwd, path, ".."), { recursive: true });
 		writeFileSync(join(cwd, path), text);
@@ -133,12 +135,38 @@ test("ignores symlinks that leave the project or point at the root file", () => 
 	assert.match(t.added("read", "c/x")!, /FALLBACK/);
 });
 
-test("paths outside cwd do nothing", () => {
+test("outside cwd and outside any git repository: nothing", () => {
 	const t = setup();
 	const outside = realpathSync(mkdtempSync(join(tmpdir(), "outside-")));
 	writeFileSync(join(outside, "AGENTS.md"), "OUT");
 	assert.equal(t.call("read", join(outside, "x")), undefined);
 	assert.equal(t.call("read", "../../etc/passwd"), undefined);
+});
+
+test("outside cwd, in a git repository: up to the repo root, included", () => {
+	const t = setup();
+	const repo = realpathSync(mkdtempSync(join(tmpdir(), "repo-")));
+	mkdirSync(join(repo, ".git"));
+	mkdirSync(join(repo, "sub/deep"), { recursive: true });
+	writeFileSync(join(repo, "CLAUDE.md"), "REPO");
+	writeFileSync(join(repo, "sub/AGENTS.md"), "SUB");
+	writeFileSync(join(repo, "sub/deep/x"), "");
+	const text = t.added("read", join(repo, "sub/deep/x"))!;
+	assert.ok(text.indexOf("\nREPO\n") < text.indexOf("\nSUB\n"));
+	// Outside cwd, paths are shown absolute.
+	assert.match(text, new RegExp(`path="${join(repo, "sub/AGENTS.md")}" scope="${join(repo, "sub")}/"`));
+	assert.equal(t.added("read", join(repo, "sub/deep/x")), undefined);
+});
+
+test("a repo around cwd: a sibling directory gets its rules, the repo root is pi's", () => {
+	const t = setup({ sub: "repo/app" });
+	t.file("../.git", "gitdir: elsewhere"); // A worktree has a .git file, not a folder.
+	t.file("../AGENTS.md", "ROOT");
+	t.file("../lib/AGENTS.md", "LIB");
+	t.file("../lib/x", "");
+	const text = t.added("read", "../lib/x")!;
+	assert.match(text, /\nLIB\n/);
+	assert.doesNotMatch(text, /ROOT/);
 });
 
 test("a big file is cut, with a note", () => {
@@ -183,7 +211,7 @@ test("accepts @path and ~/path like pi's tools", () => {
 });
 
 test("skips the agent dir: pi loaded its AGENTS.md at startup", () => {
-	const t = setup("agent");
+	const t = setup({ agentDir: "agent" });
 	t.file("agent/AGENTS.md", "GLOBAL");
 	t.file("agent/settings.json", "{}");
 	assert.equal(t.call("read", "agent/settings.json"), undefined);

@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -33,28 +33,27 @@ const real = (path: string): string | undefined => {
 	}
 };
 
-/** True when `path` is strictly inside `root`. Both must be real paths. */
-const below = (root: string, path: string): boolean => path.startsWith(root + sep);
+/** True when `path` is `dir` itself or inside it. Both must be real paths. */
+const within = (dir: string, path: string): boolean => path === dir || path.startsWith(dir + sep);
 
-/**
- * The instruction file pi would pick in `dir`, as a real path.
- * Its directory must be strictly below `root`: pi loaded the file of `root` already, and a
- * symlink out of `root` could copy any file into the context.
- */
-function instructionFile(root: string, dir: string): string | undefined {
-	for (const name of NAMES) {
-		const file = real(join(dir, name));
-		if (file && below(root, dirname(file)) && statSync(file).isFile()) return file;
+/** The nearest directory from `dir` up that holds `.git` (a folder, or a file in a worktree). */
+function gitRoot(dir: string): string | undefined {
+	for (; ; dir = dirname(dir)) {
+		if (existsSync(join(dir, ".git"))) return dir;
+		if (dirname(dir) === dir) return undefined; // Reached "/".
 	}
 }
 
+/** How a path is shown to the model: relative inside cwd, absolute outside. */
+const show = (cwd: string, path: string): string => (within(cwd, path) ? relative(cwd, path) : path);
+
 /** The file content in a tag that says where it applies. Long files are cut, with a note. */
-function render(root: string, dir: string, file: string): string {
+function render(cwd: string, dir: string, file: string): string {
 	let text = readFileSync(file, "utf8").replace(/^\uFEFF/, "");
 	if (text.length > MAX_CHARS) text = `${text.slice(0, MAX_CHARS)}\n[truncated: read the file for the rest]`;
 	// JSON.stringify quotes and escapes odd characters in file names.
-	const path = JSON.stringify(relative(root, file));
-	const scope = JSON.stringify(`${relative(root, dir)}/`);
+	const path = JSON.stringify(show(cwd, file));
+	const scope = JSON.stringify(`${show(cwd, dir)}/`);
 	return `<nested_instructions path=${path} scope=${scope}>\n${text}\n</nested_instructions>`;
 }
 
@@ -65,7 +64,7 @@ const merge = (a: Found | undefined, b: Found | undefined): Found => ({
 });
 
 export default function (pi: ExtensionAPI): void {
-	// pi also loads the AGENTS.md of its agent dir at startup. It is below cwd when pi runs in ~ or ~/.pi.
+	// pi's agent dir (~/.pi/agent). Read once: it does not change during a run.
 	const agentDir = real(getAgentDir());
 
 	/** Real paths of the instruction files the agent has in its context (or that failed to read). */
@@ -91,27 +90,52 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("session_tree", rebuild);
 
 	/**
-	 * Find the instruction files of the directories from `input` up to just below `root` that
-	 * the agent has not seen yet, and claim them in `seen`.
+	 * pi loaded the instruction file of this directory at startup: pi reads cwd and every
+	 * directory above it, and its agent dir (which is below cwd when pi runs in ~ or ~/.pi).
+	 */
+	const loadedByPi = (cwd: string, dir: string): boolean => within(dir, cwd) || dir === agentDir;
+
+	/**
+	 * The instruction file pi would pick in `dir`, as a real path. A symlink is followed only
+	 * if it stays inside `top` (else it could copy any file into the context) and does not
+	 * land on a file pi loaded already.
+	 */
+	function instructionFile(cwd: string, top: string, dir: string): string | undefined {
+		for (const name of NAMES) {
+			const file = real(join(dir, name));
+			if (file && within(top, dirname(file)) && !loadedByPi(cwd, dirname(file)) && statSync(file).isFile()) return file;
+		}
+	}
+
+	/**
+	 * Find the instruction files that apply to `input` and that the agent has not seen yet, and
+	 * claim them in `seen`. The walk goes from the file's directory up to a top directory:
+	 * - inside cwd, up to cwd;
+	 * - outside cwd, up to the root of the file's git repository (included: pi did not load
+	 *   it). A file in no git repository gets nothing: there is no bound to stop the walk.
+	 * Directories pi loaded at startup are skipped on the way.
 	 *
 	 * @param direct True when the tool output goes to the model: if `input` is itself an
 	 *               instruction file, the agent is reading it now, so it needs no copy.
 	 */
-	function find(root: string, input: unknown, direct: boolean, ctx: ExtensionContext): Found | undefined {
+	function find(cwd: string, input: unknown, direct: boolean, ctx: ExtensionContext): Found | undefined {
 		if (typeof input !== "string") return;
 		// Spelled like pi's tools do: no leading @, and ~ is home. The call succeeded, so the file exists.
-		const target = real(resolve(root, input.replace(/^@/, "").replace(/^~(?=\/|$)/, homedir())));
+		const target = real(resolve(cwd, input.replace(/^@/, "").replace(/^~(?=\/|$)/, homedir())));
+		if (!target) return;
+		const top = within(cwd, target) ? cwd : gitRoot(dirname(target));
 		// Skip installed packages. Their AGENTS.md is written for the people who work on that
 		// package (or is even a persona prompt), not for this project, and any dependency could
 		// use it to steer the agent. Checked on the real path, so a workspace package that
 		// node_modules only links to (monorepo) still gets its rules.
-		if (!target || relative(root, target).split(sep).includes("node_modules")) return;
+		if (!top || relative(top, target).split(sep).includes("node_modules")) return;
 
 		const found: Found = { files: [], texts: [] };
-		// Walk up from the file's directory to just below root, deepest first.
-		for (let dir = dirname(target); below(root, dir); dir = dirname(dir)) {
-			if (dir === agentDir) continue; // pi loaded this one at startup.
-			const file = instructionFile(root, dir);
+		// Deepest first. Inside cwd, the last step is cwd itself, which `loadedByPi` skips.
+		// `prev` stops at "/", which is its own parent.
+		for (let dir = dirname(target), prev = ""; dir !== prev && within(top, dir); prev = dir, dir = dirname(dir)) {
+			if (loadedByPi(cwd, dir)) continue;
+			const file = instructionFile(cwd, top, dir);
 			if (!file || seen.has(file)) continue;
 			// Claimed now, even if the read fails: a parallel result cannot add it twice,
 			// and a broken file warns once, not on every access.
@@ -121,16 +145,16 @@ export default function (pi: ExtensionAPI): void {
 				continue;
 			}
 
-			const path = relative(root, file);
+			const path = show(cwd, file);
 			try {
-				found.texts.unshift(render(root, dir, file)); // The walk goes deepest first; unshift puts parents first.
+				found.texts.unshift(render(cwd, dir, file)); // The walk goes deepest first; unshift puts parents first.
 				found.files.push(file);
 			} catch (error) {
 				// The file was found a moment ago, so this is rare: no permission (EACCES), or deleted since.
 				const reason = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`nested-context: the agent did not get the rules of ${path}. Reading it failed: ${reason}. Fix the file, then /reload.`, "warning");
 				// Tell the model too, so it can read the file itself or tell the user.
-				found.texts.unshift(`[nested-context] ${JSON.stringify(path)} has rules for ${JSON.stringify(`${relative(root, dir)}/`)}, but reading it failed (${(error as NodeJS.ErrnoException).code ?? reason}). Its rules are NOT applied.`);
+				found.texts.unshift(`[nested-context] ${JSON.stringify(path)} has rules for ${JSON.stringify(`${show(cwd, dir)}/`)}, but reading it failed (${(error as NodeJS.ErrnoException).code ?? reason}). Its rules are NOT applied.`);
 			}
 		}
 		return found;
@@ -138,11 +162,11 @@ export default function (pi: ExtensionAPI): void {
 
 	// Synchronous on purpose: parallel tool results cannot both claim the same file.
 	pi.on("tool_result", (event, ctx) => {
-		const root = real(ctx.cwd);
-		if (!root) return;
+		const cwd = real(ctx.cwd);
+		if (!cwd) return;
 		const nested = event.parentToolCallId !== undefined;
 		// A failed call showed the agent nothing of its directories.
-		const own = event.isError || !TOOLS.includes(event.toolName) ? undefined : find(root, event.input.path, !nested, ctx);
+		const own = event.isError || !TOOLS.includes(event.toolName) ? undefined : find(cwd, event.input.path, !nested, ctx);
 
 		if (nested) {
 			// Nested ids are `<outer id>/<n>` (deeper: `<outer id>/<n>/<m>`). Keep it for the outer result.

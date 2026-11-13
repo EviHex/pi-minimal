@@ -2,8 +2,9 @@
 
 Lazy nested `AGENTS.md`/`CLAUDE.md`. On a successful `tool_result` of `read`,
 `edit` or `write` (`TOOLS`), the instruction files of the directories
-between cwd (excluded: pi loads it) and the tool's `path` are appended to that result,
-parents first. See `README.md` for users.
+between a top directory and the tool's `path` are appended to that result, parents
+first. Top is cwd (excluded: pi loads it) for paths inside cwd, and the git root
+(included) for paths outside it. See `README.md` for users.
 
 ## Decisions
 
@@ -16,17 +17,24 @@ parents first. See `README.md` for users.
   walk up to an existing parent, no directory inputs.
 - The handler is synchronous. Two parallel results cannot claim the same file, so no
   locking. Files are read whole (`readFileSync`), then cut to `MAX_CHARS`.
-- Every path is real: `root` is `realpathSync.native(ctx.cwd)`, and inputs are resolved against
-  `root`, not `ctx.cwd` (same directory, other spelling when cwd has a symlink).
-  Containment compares real paths of root and file. `.native` also gives the case on
+- Every path is real: `cwd` in the handler is `realpathSync.native(ctx.cwd)`, and inputs
+  are resolved against it, not `ctx.cwd` (same directory, other spelling when cwd has a
+  symlink). Containment compares real paths. `.native` also gives the case on
   disk (macOS), so two spellings share one `seen` key.
 - Inputs are cleaned like pi's `resolveToCwd` (`core/tools/path-utils.js`): leading
   `@` removed, `~` expanded. Copy it if pi changes it.
 - Skipped on purpose: targets under `node_modules` (packages ship persona prompts as
   `AGENTS.md`), and `getAgentDir()` (pi loads its `AGENTS.md` globally; it is below cwd
   when pi runs in `~` or `~/.pi`).
-- A symlink out of cwd is skipped (it would copy any file into the context). A file
-  directly in cwd, even through a symlink, is skipped (pi has it).
+- Outside cwd, the bound is the nearest directory with `.git` (folder, or file in a
+  worktree): jj repos here are colocated, so no `.jj` check. No `.git` = nothing, never
+  a walk to `/`. One `existsSync` per level, only for paths outside cwd.
+- `loadedByPi(dir)`: cwd, its ancestors (`within(dir, cwd)`), and the agent dir. One rule
+  for both cases: inside cwd it skips cwd; with a repo around cwd it skips the repo root
+  and keeps siblings of cwd.
+- A symlinked instruction file is followed only if it stays within top and does not land
+  in a directory pi loaded (it would copy any file into the context, or duplicate).
+- Paths shown to the model: relative inside cwd, absolute outside (`show`).
 - The injected text is stored in the session (the tool result content). So `seen` must
   match what the model sees, not what this runtime did. Each result that carries files
   gets `details.nestedContext` (real paths; `details` is never sent to the model, and
@@ -52,7 +60,7 @@ parents first. See `README.md` for users.
 
 ## Not done
 
-Directories outside cwd (needs a root: git/jj root?), `.agents/skills` of nested
+`.agents/skills` of nested
 directories, shell command parsing (`cat src/x.ts`), `--no-context-files` detection,
 ignore globs, notification when a file loads, settings, `ls`/`find`/`grep`.
 
