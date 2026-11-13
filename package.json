@@ -5,7 +5,8 @@
     "plan-mode",
     "companion-prompts",
     "polyglot",
-    "mention-skills"
+    "mention-skills",
+    "nested-context"
   ],
   "scripts": {
     "check": "npm run check --workspaces --if-present"

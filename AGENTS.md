@@ -11,6 +11,8 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
 - `polyglot/` — `/lang` selects a saved language reminder, with tag completion.
 - `mention-skills/` — `$` autocompletes skills and prompt templates; the agent gets
   their file paths.
+- `nested-context/` — the `AGENTS.md`/`CLAUDE.md` of a subdirectory reach the agent the
+  first time it touches that directory.
 
 ## Publishing
 

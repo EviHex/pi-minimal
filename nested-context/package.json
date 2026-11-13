@@ -1,0 +1,40 @@
+{
+  "name": "@pi-minimal/nested-context",
+  "version": "0.1.0",
+  "description": "Minimal nested context for pi: AGENTS.md and CLAUDE.md files of a subdirectory reach the agent the first time it touches that directory.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.4.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "check": "tsc -p . && node --test test.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EviHex/pi-minimal.git",
+    "directory": "nested-context"
+  },
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
