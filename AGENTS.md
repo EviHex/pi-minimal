@@ -6,7 +6,7 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
 `npm run check` at the root (or `npm run check -w <name>` for one package).
 
 - `plan-mode/` — `/plan` toggles a read-only instruction in the system prompt.
-- `companion-prompts/` — adds a prompt file to the system prompt only when its rule
+- `prompt-gate/` — adds a prompt file to the system prompt only when its rule
   in `rules.ts` matches (loaded extensions, cwd).
 - `polyglot/` — `/lang` selects a saved language reminder, with tag completion.
 - `mention-skills/` — `$` autocompletes skills and prompt templates; the agent gets

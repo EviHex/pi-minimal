@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": [
     "plan-mode",
-    "companion-prompts",
+    "prompt-gate",
     "polyglot",
     "mention-skills",
     "nested-context"

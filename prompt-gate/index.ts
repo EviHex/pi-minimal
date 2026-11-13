@@ -29,13 +29,13 @@ function enabledMcpServers(agentDir: string, cwd: string, projectTrusted: boolea
 
 export default function (pi: ExtensionAPI) {
 	const agentDir = getAgentDir();
-	const promptsDir = join(agentDir, "companion-prompts");
+	const promptsDir = join(agentDir, "prompt-gate");
 	const rulesFile = join(promptsDir, "rules.ts");
 	// System prompt sections of the matching rules: section name -> prompt text.
 	let matchedSections: Record<string, string> = {};
-	// Always on, so the agent can find and edit the rules. Not "companion_*": that would clash with a rule name.
+	// Always on, so the agent can find and edit the rules. Not "gate_*": that would clash with a rule name.
 	const readme = join(dirname(fileURLToPath(import.meta.url)), "README.md");
-	const intro = `companion_* sections are conditional prompts from ${rulesFile}. To edit them, read ${readme} first.`;
+	const intro = `gate_* sections are conditional prompts from ${rulesFile}. To edit them, read ${readme} first.`;
 
 	// cwd and the loaded extensions change only with a new session or /reload, so evaluate the rules once here.
 	pi.on("session_start", async (_event, ctx) => {
@@ -59,7 +59,7 @@ export default function (pi: ExtensionAPI) {
 			// The query string skips the module cache, so edits to rules.ts are picked up.
 			rules = (await import(`${pathToFileURL(rulesFile).href}?t=${Date.now()}`)).default;
 		} catch (error) {
-			ctx.ui.notify(`companion-prompts: ${rulesFile}: ${(error as Error).message}`, "error");
+			ctx.ui.notify(`prompt-gate: ${rulesFile}: ${(error as Error).message}`, "error");
 			return;
 		}
 
@@ -69,15 +69,15 @@ export default function (pi: ExtensionAPI) {
 				if (!rule.when(context)) continue;
 				const [name, text] =
 					"file" in rule ? [rule.file.replace(/\.md$/, ""), readFileSync(join(promptsDir, rule.file), "utf8")] : [rule.name, rule.text];
-				matchedSections[`companion_${name}`] = text.trim();
+				matchedSections[`gate_${name}`] = text.trim();
 			} catch (error) {
-				ctx.ui.notify(`companion-prompts: ${"file" in rule ? rule.file : rule.name}: ${(error as Error).message}`, "error");
+				ctx.ui.notify(`prompt-gate: ${"file" in rule ? rule.file : rule.name}: ${(error as Error).message}`, "error");
 			}
 		}
 	});
 
 	// Add the cached sections to the system prompt of every run.
 	pi.on("before_agent_start", (event) => {
-		Object.assign(event.systemPromptOptions.sections, { "companion-prompts": intro }, matchedSections);
+		Object.assign(event.systemPromptOptions.sections, { "prompt-gate": intro }, matchedSections);
 	});
 }

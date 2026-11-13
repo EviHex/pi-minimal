@@ -1,4 +1,4 @@
-# @pi-minimal/companion-prompts
+# @pi-minimal/prompt-gate
 
 Personal prompts with conditions. A rule decides when a prompt file is added to the
 system prompt: for example, only when a given extension is loaded, or only under
@@ -10,16 +10,16 @@ Not on npm yet. Clone the repo and install from the folder:
 
 ```sh
 git clone https://github.com/EviHex/pi-minimal
-pi install ./pi-minimal/companion-prompts
+pi install ./pi-minimal/prompt-gate
 ```
 
 ## Usage
 
-Everything lives in `~/.pi/agent/companion-prompts/`: one `rules.ts` file, and the
+Everything lives in `~/.pi/agent/prompt-gate/`: one `rules.ts` file, and the
 prompt files (`.md`) it names. A short prompt can be written in `rules.ts` itself.
 
 ```ts
-// ~/.pi/agent/companion-prompts/rules.ts
+// ~/.pi/agent/prompt-gate/rules.ts
 import { homedir } from "node:os";
 
 const work = `${homedir()}/work`;
@@ -50,10 +50,10 @@ export default [
 
 Combine conditions with `&&`, `||` and `!`. Reuse a condition as a plain function.
 
-A matching prompt goes in a `<companion_<file name or name>>` system prompt section, once.
+A matching prompt goes in a `<gate_<file name or name>>` system prompt section, once.
 Keep it short.
 
-One more short section, `<companion-prompts>`, is always added: it tells the agent
+One more short section, `<prompt-gate>`, is always added: it tells the agent
 where `rules.ts` and this README are, so it can help you write rules.
 
 Rules are evaluated at session start. Use `/reload` after a change. `rules.ts` is

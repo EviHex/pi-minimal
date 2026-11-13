@@ -1,7 +1,7 @@
 {
-  "name": "@pi-minimal/companion-prompts",
+  "name": "@pi-minimal/prompt-gate",
   "version": "0.2.0",
-  "description": "Minimal companion prompts for pi: a prompt file is added to the system prompt only when its rule matches.",
+  "description": "Minimal prompt gate for pi: a prompt file is added to the system prompt only when its rule matches.",
   "type": "module",
   "keywords": [
     "pi-package",
@@ -26,7 +26,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/EviHex/pi-minimal.git",
-    "directory": "companion-prompts"
+    "directory": "prompt-gate"
   },
   "license": "MIT",
   "files": [

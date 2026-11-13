@@ -1,9 +1,9 @@
-# pi-minimal-companion-prompts
+# pi-minimal-prompt-gate
 
-Personal prompts with conditions. `~/.pi/agent/companion-prompts/rules.ts` exports
+Personal prompts with conditions. `~/.pi/agent/prompt-gate/rules.ts` exports
 `{ file | name+text, when }[]`; each prompt (a `.md` file, or an inline `text`) whose
 `when(c)` returns true is added to the
-system prompt (section `companion_<file name or name>`). See `README.md` for the format.
+system prompt (section `gate_<file name or name>`). See `README.md` for the format.
 
 ## Scope
 
@@ -24,7 +24,7 @@ system prompt (section `companion_<file name or name>`). See `README.md` for the
   cached sections.
 - `rules.ts` is loaded with `import()`, which pi's jiti rewrites (so full TS works).
   The `?t=` query skips jiti's cache, which pi reuses on `/new` and `/resume`.
-- One always-on section `companion-prompts` (hyphen, so no rule name can clash) tells
+- One always-on section `prompt-gate` (hyphen, so no rule name can clash) tells
   the agent where `rules.ts` and this `README.md` are. About 30 tokens; keep it short.
 - No write anywhere. No settings, no commands.
 - Risk: `DefaultPackageManager` is a public SDK export, but not an extension API.
