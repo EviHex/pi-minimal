@@ -22,7 +22,7 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "check": "tsc -p ."
+    "check": "tsc -p . && node check.ts"
   },
   "repository": {
     "type": "git",
@@ -37,5 +37,6 @@
   ],
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "type": "module"
 }

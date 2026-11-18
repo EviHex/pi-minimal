@@ -1,7 +1,7 @@
 # @pi-minimal/mention-skills
 
 Type `$` in the editor to autocomplete skills and prompt templates. Like pi's `@`
-for files, nothing is inlined: before each LLM call, `$name` gets its file path,
+for files, nothing is inlined by default: before each LLM call, `$name` gets its file path,
 and the agent reads the file itself.
 
 - You type and see: `use $jj to commit`
@@ -19,10 +19,20 @@ and the agent reads the file itself.
 - The `context` event edits pi's copy of all user text blocks on every LLM call.
   Session history and the chat UI keep the short `$name`. Output is the same for
   the same input, so the prompt cache stays valid.
+- `inlineSkills` / `inlinePrompts`: `before_agent_start` returns one custom message
+  (`customType: "mention-skills"`, `display: true`) with a
+  `<skill|prompt name location>body</…>` block (frontmatter stripped) per name of the
+  prompt that is not attached yet. It is saved in the session and sent to the LLM, so
+  the chat shows what the LLM got. "Not attached yet" is checked on
+  `buildContextEntries()`, so content removed by compaction is attached again.
+  `details` lists `{kind, name}` for the collapsed `[skill] name` line. An
+  unreadable file falls back to the path.
 - Settings: see `README.md` (single source).
 
 ## Limits
 
+- Only prompts that start a run get attachments. Steering messages sent while the
+  agent runs keep the path only.
 - The agent may skip reading the file (same as `@`).
 - After compaction, the summary only has `$name`. Skills are still in pi's skill
   list; prompt templates lose their path.
@@ -32,8 +42,9 @@ and the agent reads the file itself.
 ## Files
 
 - `index.ts` — the extension.
+- `check.ts` — self-check of the path rewrite and the attachments (not published).
 - `README.md` — usage and settings.
-- `package.json` — `pi` manifest; `npm run check` runs `tsc`.
+- `package.json` — `pi` manifest; `npm run check` runs `tsc` and `check.ts`.
 
 ## Conventions
 
