@@ -11,10 +11,16 @@ sub-agent:   [system prompt + tools][conversation ...............][task]
               \_______________ read from the prompt cache _______/
 ```
 
-- The agent calls the `subagent` tool. It waits for the result, or with
+- The agent calls the `subagent` tool. By default it forks this conversation; with
+  `fresh: true` it starts with an empty conversation instead, and with `resume: <id>` it
+  continues a finished or stopped sub-agent with its existing context. Pass `model`
+  (`provider/id` or `id`), `thinking` (`off`, `minimal`, `low`, `medium`, `high`,
+  `xhigh`, `max`), and a short `label` as needed. It waits for the result, or with
   `run_in_background` it goes on and the result arrives later as a message.
-- You type `/spawn <task>` to start one in the background yourself. The main agent is
-  told what you asked; the result wakes it up when it arrives.
+- You type `/subagents spawn [--fresh] [--model <provider/id>] [--thinking <level>] <task>`
+  (alias: `/sa spawn ...`) to start one in the background yourself (with Tab completion
+  for subcommands, flags, models and thinking levels). The main agent is told what you
+  asked; the result wakes it up when it arrives.
 - Sub-agents can start their own sub-agents.
 - Escape stops the main agent and every sub-agent. No result wakes the agent up after
   that.
@@ -42,11 +48,21 @@ file. Settings are read at session start (use `/reload`).
 
 The default guidance:
 
-> Use the `subagent` tool to hand a self-contained task to a fork of yourself: it sees
-> this whole conversation and has your tools, and its final message comes back to you.
-> Use it for independent work that can run in parallel, or for a long investigation
-> that would fill your context. Do not use it for a quick lookup. Give each sub-agent
-> one precise task and say what it must report.
+> Use the `subagent` tool to hand a self-contained task to a sub-agent with your tools;
+> its final message comes back to you. By default it forks this conversation (sees
+> everything above and reuses the prompt cache); pass `fresh: true` for an empty
+> conversation when the history above is not needed, and include all context in `task`.
+> Pass `model` (provider/id or id) and/or `thinking` (off, minimal, low, medium, high,
+> xhigh, max) to override the current model or thinking level; changing the model misses
+> the prompt cache on a fork, so it pairs best with `fresh: true`. Pass `label` for a
+> short status label when `task` is long, and `resume: <id>` to continue a finished or
+> stopped sub-agent with its existing context. Each sub-agent runs in its own process
+> (in-memory state like the parent's todo list is not shared; files in the working
+> directory are). To run several sub-agents in parallel
+> and collect all results together, call `subagent` concurrently in the foreground
+> (e.g. `Promise.allSettled` in `codemode`); use `run_in_background` only when you want
+> to return immediately and be woken later by a message. Do not use sub-agents for a
+> quick lookup. Give each sub-agent one precise task and say what it must report.
 
 ```json
 { "pi-minimal": { "subagents": { "guidance": "Use the subagent tool, in the background, for every task that takes more than a few tool calls." } } }
@@ -54,21 +70,32 @@ The default guidance:
 
 ## Commands
 
-- `/spawn <task>`: start a background sub-agent.
-- `/subagents`: pick a sub-agent of this session and watch it live (its text, the tools
-  it runs, the start of each result). ↑↓, PgUp, PgDn, Home and End scroll; Escape
-  closes.
-- `/subagents stop`: stop the running sub-agents.
+All commands work under `/subagents` or the short alias `/sa`:
 
-A line per running sub-agent shows above the editor: its task, its last tool, how many
-tools it ran, and for how long.
+- `/subagents` (or `/sa`): pick a sub-agent of this session and watch it live (its
+  text, the tools it runs, context window usage, the start of each result). ↑↓, PgUp,
+  PgDn, Home and End scroll; Escape closes.
+- `/subagents spawn [--fresh] [--model <provider/id>] [--thinking <level>] <task>`:
+  start a background sub-agent (fork by default; `--fresh` for an empty conversation;
+  `--model` and `--thinking` to override model/thinking, with Tab completion).
+- `/subagents stop`: stop the running sub-agents.
+- `/subagents show` / `/subagents hide`: show (even after all sub-agents finish) or hide
+  the tree widget above the editor.
+
+While any sub-agent is running (or when shown via `/subagents show`), a tree shows above
+the editor (`● Sub-agents (done/total)` with `├─` / `└─` branches, including nested
+sub-agents): each entry shows its status (`◐`/`✓`/`✗`/`○`), label, last tool, tool
+count, context window usage, elapsed time, and latest summary line.
 
 ## Behavior
 
-- A sub-agent is a `pi` process that continues a copy of the session. It loads the
-  same settings, extensions, skills and MCP servers as yours, so it has the same tools.
-  Its session file is next to yours (`<session>/subagents/<id>.jsonl`): open it with
-  `pi --session <file>` to read all of it, or to talk to it.
+- A sub-agent is a `pi` process that continues a copy of the session (or an empty
+  session when `fresh` is set). It loads the same settings, extensions, skills and MCP
+  servers as yours, so it has the same tools. Because it is a separate process, it does
+  not share in-memory state (such as the parent's todo list or plan mode toggle), but it
+  does share the working directory on disk and external services. Its session file is
+  next to yours (`<session>/subagents/<id>.jsonl`): open it with `pi --session <file>`
+  to read all of it, or to talk to it.
 - The copy stops before the turn that is running: the sub-agent does not see the
   tool call that started it, only its task.
 - Escape while the agent works stops every sub-agent, and the agent gets one line per

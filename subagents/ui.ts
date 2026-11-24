@@ -1,6 +1,6 @@
 import { getMarkdownTheme, keyHint, type Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Container, Markdown, matchesKey, Text, type TUI, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { Child } from "./child.ts";
+import type { Child, ChildSnapshot, Status } from "./child.ts";
 
 const oneLine = (text: string, max: number) => {
 	const line = text.replace(/\s+/g, " ").trim();
@@ -12,20 +12,70 @@ const duration = (ms: number) => {
 	return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
 };
 
-/** The widget above the editor: one line per running child. */
-export function widgetLines(children: Child[], theme: Theme, now: number): string[] {
-	return children
-		.filter((child) => child.status === "running")
-		.map(
-			(child) =>
-				`${theme.fg("accent", "●")} #${child.id} ${oneLine(child.task, 60)}` +
-				theme.fg("dim", ` · ${child.activity} · ${child.tools} tools · ${duration(now - child.startedAt)}`),
-		);
+const shortTokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
+
+export function formatContext(tokens: number, window: number): string {
+	if (!tokens) return "";
+	return window ? `${shortTokens(tokens)}/${shortTokens(window)} (${Math.round((tokens / window) * 100)}%)` : shortTokens(tokens);
+}
+
+const STATUS_ICON: Record<Status, { glyph: string; color: "accent" | "success" | "error" | "warning" }> = {
+	running: { glyph: "◐", color: "accent" },
+	done: { glyph: "✓", color: "success" },
+	failed: { glyph: "✗", color: "error" },
+	stopped: { glyph: "○", color: "warning" },
+};
+
+function renderNode(node: ChildSnapshot, path: string, prefix: string, isLast: boolean, theme: Theme, now: number, out: string[]) {
+	const branch = theme.fg("dim", `${prefix}${isLast ? "└─ " : "├─ "}`);
+	const { glyph, color } = STATUS_ICON[node.status];
+	const icon = theme.fg(color, glyph);
+	const label = oneLine(node.label, 52);
+	const elapsed = duration((node.endedAt ?? now) - node.startedAt);
+	const ctx = formatContext(node.contextTokens ?? 0, node.contextWindow ?? 0);
+	const parts =
+		node.status === "running"
+			? [node.activity, `${node.tools} tools`, ctx, elapsed]
+			: [node.status !== "done" ? node.status : "", ctx, elapsed];
+	const meta = ` · ${parts.filter(Boolean).join(" · ")}`;
+	const summary = node.summary ? theme.fg("muted", ` — ${oneLine(node.summary, 48)}`) : "";
+	const title = node.status === "running" ? `#${path} ${label}` : theme.fg("dim", `#${path} ${label}`);
+	out.push(`${branch}${icon} ${title}${theme.fg("dim", meta)}${summary}`);
+	const nextPrefix = `${prefix}${isLast ? "   " : "│  "}`;
+	const kids = node.children ?? [];
+	kids.forEach((kid, idx) => renderNode(kid, `${path}.${kid.id}`, nextPrefix, idx === kids.length - 1, theme, now, out));
+}
+
+/** The widget above the editor: a Todos-style tree shown while any sub-agent is running (or when `forceShow` is true). */
+export function widgetLines(children: Child[], theme: Theme, now: number, forceShow = false): string[] {
+	if (!children.length || (!forceShow && !children.some((c) => c.status === "running"))) return [];
+	const done = children.filter((c) => c.status === "done").length;
+	const lines = [`${theme.fg("accent", "●")} Sub-agents ${theme.fg("dim", `(${done}/${children.length})`)}`];
+	const nodes: ChildSnapshot[] = children.map((c) => ({
+		id: c.id,
+		label: c.label || c.task,
+		status: c.status,
+		activity: c.activity,
+		tools: c.tools,
+		contextTokens: c.contextTokens ?? 0,
+		contextWindow: c.contextWindow ?? 0,
+		summary: c.summary ?? "",
+		startedAt: c.startedAt,
+		endedAt: c.endedAt,
+		children: c.children ?? [],
+	}));
+	nodes.forEach((node, idx) => renderNode(node, `${node.id}`, "", idx === nodes.length - 1, theme, now, lines));
+	return lines;
 }
 
 /** One line about a child: what the tool result and the result message start with. */
-export const headline = (child: Child) =>
-	`Sub-agent #${child.id} ${child.status === "done" ? "finished" : child.status} after ${duration((child.endedAt ?? Date.now()) - child.startedAt)}.`;
+export function headline(child: Child): string {
+	const status = { done: "finished", stopped: "stopped by user", failed: "failed", running: "running" }[child.status];
+	const tag = child.label && child.label !== child.task ? ` [${oneLine(child.label, 40)}]` : "";
+	const spec = [child.model, child.thinking].filter(Boolean).join(", ");
+	const info = spec ? ` (${spec})` : "";
+	return `Sub-agent #${child.id}${tag}${info} ${status} after ${duration((child.endedAt ?? Date.now()) - child.startedAt)}.`;
+}
 
 /** A result in the chat: the first line and a short preview, or everything as Markdown when expanded. */
 export function resultView(text: string, expanded: boolean, theme: Theme): Component {
@@ -102,7 +152,11 @@ export class Viewer implements Component {
 		const body = transcript(child, theme).flatMap((line) => wrapTextWithAnsi(line, width));
 		this.max = Math.max(0, body.length - this.height);
 		const top = Math.min(this.top ?? this.max, this.max);
-		const head = `${theme.fg("accent", `#${child.id} ${child.status}`)} ${theme.fg("dim", `· pi --session ${child.file}`)}`;
+		const ctx = formatContext(child.contextTokens ?? 0, child.contextWindow ?? 0);
+		const info = [child.model && `${child.model}${child.thinking ? ` (${child.thinking})` : ""}`, ctx, `pi --session ${child.file}`]
+			.filter(Boolean)
+			.join(" · ");
+		const head = `${theme.fg("accent", `#${child.id} ${child.status}`)} ${theme.fg("dim", `· ${info}`)}`;
 		const foot = theme.fg("dim", "↑↓ PgUp PgDn Home End · Esc closes");
 		return [head, ...body.slice(top, top + this.height), foot].map((line) => truncateToWidth(line, width));
 	}

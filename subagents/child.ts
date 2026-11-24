@@ -7,19 +7,47 @@ type Message = Extract<JsonAgentSessionEvent, { type: "message_end" }>["message"
 
 export type Status = "running" | "done" | "failed" | "stopped";
 
+/** Snapshot of a child (and its nested children) for the tree widget and parent IPC. */
+export interface ChildSnapshot {
+	id: number;
+	label: string;
+	status: Status;
+	activity: string;
+	tools: number;
+	contextTokens: number;
+	contextWindow: number;
+	summary: string;
+	startedAt: number;
+	endedAt?: number;
+	children: ChildSnapshot[];
+}
+
 /** A sub-agent: one `pi --mode json` process that continues a forked session file. */
 export interface Child {
 	id: number;
 	task: string;
+	/** Short display label (defaults to `task`). */
+	label: string;
+	/** Model used (`provider/id`). */
+	model: string;
+	/** Thinking level used. */
+	thinking: string;
 	/** Its session file. `pi --session <file>` opens it. */
 	file: string;
 	status: Status;
 	/** What it does now, for the widget: the last tool it started. */
 	activity: string;
 	tools: number;
+	/** Last reported total context tokens and model context window. */
+	contextTokens: number;
+	contextWindow: number;
+	/** Latest short summary line from assistant text. */
+	summary: string;
+	/** Live snapshot of sub-agents started by this child (reported over stdout JSONL). */
+	children: ChildSnapshot[];
 	/** The messages it added after the fork (its task, its answers, tool results). */
 	messages: Message[];
-	/** Its final text when done, the error when failed. */
+	/** Its final text when done or stopped, the error when failed. */
 	output: string;
 	startedAt: number;
 	endedAt?: number;
@@ -28,6 +56,25 @@ export interface Child {
 	/** Resolves when the process has exited. Never rejects. */
 	done: Promise<Child>;
 }
+
+export const snapshot = (
+	child: Pick<
+		Child,
+		"id" | "label" | "status" | "activity" | "tools" | "contextTokens" | "contextWindow" | "summary" | "startedAt" | "endedAt" | "children"
+	>,
+): ChildSnapshot => ({
+	id: child.id,
+	label: child.label,
+	status: child.status,
+	activity: child.activity,
+	tools: child.tools,
+	contextTokens: child.contextTokens,
+	contextWindow: child.contextWindow,
+	summary: child.summary,
+	startedAt: child.startedAt,
+	endedAt: child.endedAt,
+	children: child.children,
+});
 
 export interface Invocation {
 	command: string;
@@ -45,8 +92,14 @@ export function piInvocation(args: string[], script = process.argv[1], exec = pr
 	return { command: "pi", args };
 }
 
+type ChildEvent = JsonAgentSessionEvent | { type: "subagent_children"; children: ChildSnapshot[] };
+
 /** Apply one event of a child's JSONL stream. False when it changes nothing a viewer shows. */
-export function apply(child: Child, event: JsonAgentSessionEvent): boolean {
+export function apply(child: Child, event: ChildEvent): boolean {
+	if (event.type === "subagent_children" && Array.isArray(event.children)) {
+		child.children = event.children;
+		return true;
+	}
 	if (event.type === "tool_execution_start") {
 		child.activity = event.toolName;
 		child.tools++;
@@ -54,7 +107,13 @@ export function apply(child: Child, event: JsonAgentSessionEvent): boolean {
 	}
 	if (event.type !== "message_end" || !["user", "assistant", "toolResult"].includes(event.message.role)) return false;
 	child.messages.push(event.message);
-	if (event.message.role === "assistant") child.activity = "thinking";
+	if (isAssistant(event.message)) {
+		child.activity = "thinking";
+		const u = event.message.usage;
+		if (u) child.contextTokens = u.totalTokens || u.input + u.cacheRead + u.cacheWrite + u.output;
+		const line = textOf(event.message).split("\n").find((l) => l.trim());
+		if (line) child.summary = line.trim();
+	}
 	return true;
 }
 
@@ -76,13 +135,14 @@ const isAssistant = (message: Message): message is Assistant => message.role ===
 const modelError = (last?: Assistant) => (last?.stopReason === "error" ? (last.errorMessage ?? "model error") : undefined);
 const textOf = (last: Assistant) => last.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n").trim();
 
-/** How a child ended: a crash or a model error fails it, else its output is its last text. */
+/** How a child ended: a stop keeps any last text; a crash or model error fails it; else done with its last text. */
 export function outcome(messages: Message[], exit: Exit, stopping: boolean): Pick<Child, "status" | "output"> {
-	if (stopping) return { status: "stopped", output: "" };
 	const last = messages.findLast(isAssistant);
+	const text = last ? textOf(last) : "";
+	if (stopping) return { status: "stopped", output: text };
 	const failure = exitFailure(exit) ?? modelError(last);
 	if (failure) return { status: "failed", output: failure };
-	return { status: "done", output: last ? textOf(last) : "" };
+	return { status: "done", output: text };
 }
 
 /** SIGTERM: a pi then stops its own sub-agents. SIGKILL after 5 s if it hangs. */
@@ -92,13 +152,20 @@ function terminate(proc: ChildProcess) {
 	setTimeout(() => proc.exitCode === null && proc.signalCode === null && proc.kill("SIGKILL"), 5000).unref();
 }
 
-const parse = (line: string): JsonAgentSessionEvent | undefined => {
+const parse = (line: string): ChildEvent | undefined => {
 	try {
 		return JSON.parse(line);
 	} catch {
 		return undefined; // not an event
 	}
 };
+
+export interface ChildMeta {
+	label?: string;
+	model?: string;
+	thinking?: string;
+	contextWindow?: number;
+}
 
 /** Start a child. `onChange` runs after each event that changes what a viewer shows. */
 export function startChild(
@@ -109,6 +176,7 @@ export function startChild(
 	cwd: string,
 	env: NodeJS.ProcessEnv,
 	onChange: () => void,
+	meta: ChildMeta = {},
 ): Child {
 	const proc = spawn(pi.command, pi.args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
 	let stopping = false;
@@ -116,10 +184,17 @@ export function startChild(
 	const child: Child = {
 		id,
 		task,
+		label: meta.label?.trim() || task,
+		model: meta.model ?? "",
+		thinking: meta.thinking ?? "",
 		file,
 		status: "running",
 		activity: "starting",
 		tools: 0,
+		contextTokens: 0,
+		contextWindow: meta.contextWindow ?? 0,
+		summary: "",
+		children: [],
 		messages: [],
 		output: "",
 		startedAt: Date.now(),

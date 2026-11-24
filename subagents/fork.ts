@@ -34,6 +34,25 @@ export function forkFileText(
 }
 
 /**
+ * Clean a saved session JSONL before resuming it: drop any truncated JSON tail line and cut an
+ * unfinished tool-call turn (same rule as `forkBranch`) so the provider will accept the next prompt.
+ */
+export function sanitizeSessionText(text: string): string {
+	const lines = text.split("\n").filter((l) => l.trim());
+	const parsed: object[] = [];
+	for (const line of lines) {
+		try {
+			parsed.push(JSON.parse(line));
+		} catch {
+			break; // truncated tail from a crash
+		}
+	}
+	if (!parsed.length) return text;
+	const [head, ...entries] = parsed;
+	return [head, ...forkBranch(entries as SessionEntry[])].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+}
+
+/**
  * Runs in the fork. Before its first request, pi compares the prompt and tools it would build now with
  * the ones in the transcript, and adds a system message for each difference (an extension that keeps
  * state in memory, such as plan mode; a file changed on disk). The fork must follow the parent's prompt,

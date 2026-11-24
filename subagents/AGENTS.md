@@ -1,8 +1,13 @@
 # @pi-minimal/subagents
 
-A sub-agent is a fork: a `pi --mode json --session <copy>` process that continues a copy
-of the parent's branch with one new user message (`forkPrompt(task)`). See `README.md`
-for users.
+A sub-agent is a `pi --mode json --session <copy>` process. By default it forks the
+parent's branch with one new user message (`childPrompt(task, "fork")`); with
+`fresh: true` (or `/spawn --fresh`) the copied session file has only the header and
+starts empty with `childPrompt(task, "fresh")`; with `resume: <id>` it cleans any
+truncated tail or unfinished tool-call turn in the prior child's `.jsonl`
+(`sanitizeSessionText`) and continues it with `childPrompt(task, "resume")`. Both
+`fresh` and `resume` leave `PI_MINIMAL_SUBAGENT_FORKED_AT` unset so `dropForkDrift` is
+inactive. See `README.md` for users.
 
 ## Glossary
 
@@ -50,14 +55,17 @@ for users.
   `prompt_cache_key` is the only loss.
 - Session files: `<parent session file without .jsonl>/subagents/<id>.jsonl`, or
   `$TMPDIR/pi-subagents` for an in-memory parent. Never deleted.
-- Model: `--provider` and `--model` from `ctx.model` (ids can contain `/`), `--thinking`
-  from `pi.getThinkingLevel()`.
+- Model & thinking: `--provider` and `--model` from `resolveModel` (defaults to
+  `ctx.model`, or an explicit `provider/id` / `id` from `modelRegistry.getAvailable()`;
+  ids can contain `/`), `--thinking` from `resolveThinking` (defaults to
+  `pi.getThinkingLevel()`).
 - JSONL is split on `\n` only (`readline` also splits on U+2028/U+2029).
 
 ## Not done
 
-Concurrency limit, timeout, steering a running child, a result tool (results are
-pushed), short labels for tasks, CLI flag passthrough, idle Escape.
+- Not done: concurrency limit, timeout, steering a running child, a result tool
+  (parallel batching uses foreground concurrent calls / `codemode` `Promise.allSettled`;
+  results of background runs are pushed), CLI flag passthrough, idle Escape.
 
 ## Files
 
