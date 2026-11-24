@@ -13,6 +13,8 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
   their file paths.
 - `nested-context/` — the `AGENTS.md`/`CLAUDE.md` of a subdirectory reach the agent the
   first time it touches that directory.
+- `subagents/` — `subagent` tool and `/spawn`: forks of the conversation, with the parent's
+  tools and model, that reuse its prompt cache.
 
 ## Publishing
 
