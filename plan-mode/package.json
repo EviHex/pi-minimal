@@ -20,7 +20,7 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "check": "tsc -p ."
+    "check": "tsc -p . && node --test test.ts"
   },
   "repository": {
     "type": "git",

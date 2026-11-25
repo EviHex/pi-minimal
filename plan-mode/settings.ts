@@ -1,5 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { KeyId } from "@earendil-works/pi-tui";
+
+/** Key id type as pi validates it (pi-tui is not a declared dependency). */
+type KeyId = Parameters<ExtensionAPI["registerShortcut"]>[0];
 
 /** What the user can configure in settings.json, under "pi-minimal"."plan-mode" */
 export interface PlanModeSettings {
