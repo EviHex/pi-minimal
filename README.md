@@ -4,11 +4,7 @@ Small yet powerful [pi](https://pi.dev) extensions. Each one does one thing, cos
 
 ## What "minimal" means here
 
-A minimal extension:
-
-1. **Adds little to the agent context.** The extensions add minimal overhead to agent context (a line or two at most).
-2. **Prioritize simplicity over feature count.** Each extension does one thing well, no feature exists "just in case".
-3. **Minimal implementation.** Features are implemented in the simplest way possible, easy to fork and customize to suit your needs.
+Each package does one thing, works with sane defaults, and costs little context. The full criteria are in [`AGENTS.md`](./AGENTS.md#what-qualifies-as-a-package).
 
 ## Published extensions
 

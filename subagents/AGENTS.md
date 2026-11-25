@@ -3,7 +3,7 @@
 A sub-agent is a `pi --mode rpc --session <copy>` process (prompt and optional `steer`
 commands are sent over stdin JSONL; stdin closes when `agent_settled` arrives). By
 default it forks the parent's branch with one new user message (`childPrompt(task, "fork")`); with
-`fresh: true` (or `/spawn --fresh`) the copied session file has only the header and
+`fresh: true` (or `/sa spawn --fresh`) the copied session file has only the header and
 starts empty with `childPrompt(task, "fresh")`; with `resume: <id>` it cleans any
 truncated tail or unfinished tool-call turn in the prior child's `.jsonl`
 (`sanitizeSessionText`) and continues it with `childPrompt(task, "resume")`. Both
@@ -43,20 +43,28 @@ inactive. See `README.md` for users.
   part of the cached prefix. Same for the `subagents` prompt section.
 - `forkPrompt` says the conversation above is context only: without it a fork followed the
   last user message ("call the subagent tool") and forked again, down to `MAX_DEPTH`.
-- Background only at depth 0: print mode exits when its run ends, which would stop the
-  children. A child's sub-agents run in the foreground, in parallel when the model calls
-  several at once.
+- Tools: `subagent`, `subagent_status`, `subagent_steer`, `subagent_stop`. Background is the
+  default; `wait: true` blocks. It is only at depth 0 with a UI: print mode exits when its run
+  ends, which would stop the children. A child's sub-agents run in the foreground, in
+  parallel when the model calls several at once.
+- Groups: children sharing `group` wake the agent once, when the last one ends (`deliverLater`
+  sets `triggerTurn: false` for the others).
+- Commands: `/sa` (alias `/subagents`) with `spawn`, `minimize`, `settings`. Settings are
+  `fields` (widget columns) and `allowNested` (children may spawn), both written by
+  `/sa settings` under `"pi-minimal"."subagents"`; `guidance` replaces the prompt section.
+  Settings are read at `session_start`.
 - Delivery: `pi.sendMessage(customType "subagent", triggerTurn: true)` (steer while the
   parent streams). A stopped child gets `triggerTurn: false`: the model learns it, nothing
   wakes up. Nothing is sent after `session_shutdown`.
-- Compaction with live children: `/compact` runs `session.abort()` first, but pi 1.6 `abort()`
-  only flags an *active* run, so an idle parent never emits `agent_settled` with `aborted` and
-  `stopAll()` is skipped. Verified 2026-11-25 with three background children and two manual
-  `/compact`s: the children kept running, and each result was appended after the compaction
-  entry, so the next turn still saw it. A `/compact` during a live turn does abort it, and a
-  `wait: true` child dies through the tool's abort signal.
-- `/compact` calls `abort()` first, so a live turn emits `agent_settled` aborted just like Escape; `session_before_compact` follows right after. `agent_settled` waits 50 ms and skips `stopAll()` if compaction started (`compacting`); `session_compact` sends a hidden `subagent` note listing running children (`compactNote`), because the summary drops the "started in background" results. Extensions cannot append `customInstructions` (the hook result is only `cancel`/`compaction`). Known gap: `/compact` on a too-small session still aborts a live turn and stops children.
-- Escape: `agent_settled` with `aborted` stops every running child. No idle Escape:
+- `/compact` calls `abort()`, so a live turn emits `agent_settled` with `aborted`, like Escape.
+  `session_before_compact` sets `compacting`; `agent_settled` waits 50 ms and calls `stopAll()`
+  only if the flag is unset. `session_compact_failed` clears it. `session_compact` sends a
+  hidden `subagent` message listing the running children (`compactNote`), because the summary
+  drops the "started in background" results. An idle parent never emits `agent_settled`
+  aborted, so its children are never stopped. Known limits: a `/compact` that fails before
+  `session_before_compact` fires, during a live turn, still stops the children; the 50 ms
+  wait is a timing assumption.
+- Escape: `agent_settled` with `aborted` (and no `compacting`) stops every running child. No idle Escape:
   `onTerminalInput` sees keys before dialogs, so Escape that closes a dialog would stop them.
 - Fork file: `forkFileText` writes a new header (`parentSession` = parent file) and the cut
   branch. New session id: a shared id would share pi-ai per-session state, and OpenAI's
@@ -69,17 +77,18 @@ inactive. See `README.md` for users.
   `pi.getThinkingLevel()`).
 - JSONL is split on `\n` only (`readline` also splits on U+2028/U+2029).
 
-## Not done
+## Also in place
 
 - Persistence across `/reload` and `--resume`: at depth 0, each launch appends a
   `customType: "subagents"` entry (`pi.appendEntry`) with `{ id, file, task, label,
   model, thinking }`; `session_start` restores them (`restoreRecords`) so `#id` stays
-  monotonic and `resume` keeps working after a reload.
-- Terminal status: when the main agent settles while background sub-agents are still
-  running, `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps
-  `tui.terminal.setProgramStatus({ state: "working", ... })` (OSC 7501) and
-  `setProgress(true)` (OSC 9;4) active, and clears them once all children end. Also
-  emits `pi.events.emit("subagents:status", { running, total })`.
+  monotonic and `resume` keeps working.
+- Terminal status: while background children run and the main agent is idle,
+  `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps OSC 7501 and OSC 9;4
+  active, and clears them when all end. It also emits `pi.events.emit("subagents:status",
+  { running, total })`.
+- Static prompt text: `GUIDANCE` (about 1500 chars) plus the four tool descriptions (about 650
+  chars) is about 540 tokens, plus the parameter descriptions and the model shortlist.
 - Not done: concurrency limit, timeout on runs, CLI flag passthrough, idle Escape.
 
 ## Files
@@ -89,7 +98,7 @@ inactive. See `README.md` for users.
 - `child.ts` — `startChild` (spawn, JSONL events), `apply`, `outcome`, `piInvocation`
   (copied from pi's `examples/extensions/subagent`).
 - `ui.ts` — widget lines, `statusReport`, `resultView` (tool result and result messages).
-- `prompts.ts` — default guidance, tool description, fork prompt, `/spawn` note.
+- `prompts.ts` — default guidance, tool description, fork prompt, `/sa spawn` note.
 - `test.ts` — `node:test`; children are `node -e` scripts that print JSONL like pi.
 
 ## Checks
