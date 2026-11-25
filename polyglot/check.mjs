@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,7 +27,7 @@ async function check() {
 	});
 	const pi = await jiti.import(host);
 	const originalDir = process.env.PI_CODING_AGENT_DIR;
-	const dir = await mkdtemp(join(root, ".polyglot-check-"));
+	const dir = await mkdtemp(join(tmpdir(), "polyglot-check-"));
 	process.env.PI_CODING_AGENT_DIR = dir;
 	try {
 		const polyglot = await jiti.import(join(root, "index.ts"), { default: true });
@@ -157,6 +157,9 @@ async function check() {
 		await rm(join(custom, "yue.md"));
 		assert.equal(await prompt(), undefined);
 		assert.match(notices.at(-1).text, /not applied/);
+		const count = notices.length;
+		assert.equal(await prompt(), undefined);
+		assert.equal(notices.length, count); // A broken prompt is reported once per code, not every turn.
 		await rm(path);
 		await command("zh-hans");
 		await mkdir(path); // A broken custom file must not silently fall back to built-in.

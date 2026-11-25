@@ -14,8 +14,7 @@
     "index.ts",
     "README.md",
     "LICENSE",
-    "langs",
-    "check.mjs"
+    "langs"
   ],
   "pi": {
     "extensions": [

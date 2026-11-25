@@ -29,13 +29,13 @@ async function readPrompt(code: string): Promise<string> {
 	return prompt;
 }
 
-// Footer shows the native name; custom codes show the code itself.
-const setStatus = (ctx: ExtensionContext, on: boolean, code: string) =>
-	ctx.ui.setStatus("polyglot", on && code !== "off" ? `Polyglot ${LANGUAGES.find(({ value }) => value === code)?.label ?? code}` : undefined);
-
 export default function polyglot(pi: ExtensionAPI) {
 	let language = "zh-hans";
 	let showStatus = true;
+	let warned: string | undefined; // language whose broken prompt was already reported
+	// Footer shows the native name; custom codes show the code itself.
+	const setStatus = (ctx: ExtensionContext) =>
+		ctx.ui.setStatus("polyglot", showStatus && language !== "off" ? `Polyglot ${LANGUAGES.find(({ value }) => value === language)?.label ?? language}` : undefined);
 	const configPath = join(getAgentDir(), "polyglot.json");
 	pi.on("session_start", async (_event, ctx) => {
 		language = "zh-hans";
@@ -44,8 +44,8 @@ export default function polyglot(pi: ExtensionAPI) {
 		try {
 			const raw = await readFile(configPath, "utf8").catch((error) => {
 				if (error.code !== "ENOENT") throw error;
-				return '{"defaultLang":"zh-hans"}';
 			});
+			if (raw === undefined) return setStatus(ctx); // No saved choice: keep the default.
 			const saved = JSON.parse(raw);
 			if (typeof saved?.defaultLang !== "string") throw new Error("Invalid saved language");
 			// Preserve choices saved before the Chinese filenames used BCP 47 tags.
@@ -55,7 +55,7 @@ export default function polyglot(pi: ExtensionAPI) {
 		} catch (error) {
 			ctx.ui.notify(`Cannot restore language; using zh-hans: ${error}`, "error");
 		}
-		setStatus(ctx, showStatus, language);
+		setStatus(ctx);
 	});
 
 	pi.registerCommand("lang", {
@@ -78,7 +78,7 @@ export default function polyglot(pi: ExtensionAPI) {
 				return;
 			}
 			language = code;
-			setStatus(ctx, showStatus, language);
+			setStatus(ctx);
 			try {
 				await mkdir(getAgentDir(), { recursive: true });
 				await writeFile(configPath, JSON.stringify({ defaultLang: language }) + "\n", "utf8");
@@ -94,8 +94,10 @@ export default function polyglot(pi: ExtensionAPI) {
 		if (language === "off") return;
 		try {
 			event.systemPromptOptions.sections.polyglot_language = await readPrompt(language);
+			warned = undefined;
 		} catch (error) {
-			ctx.ui.notify(`Language prompt not applied: ${error}`, "error");
+			if (warned !== language) ctx.ui.notify(`Language prompt not applied: ${error}`, "error");
+			warned = language;
 		}
 	});
 	// The summarizer cannot see our system section, so tell it through the conversation.
