@@ -47,21 +47,22 @@ function gitRoot(dir: string): string | undefined {
 /** How a path is shown to the model: relative inside cwd, absolute outside. */
 const show = (cwd: string, path: string): string => (within(cwd, path) ? relative(cwd, path) : path);
 
+/** The directory a file applies to, quoted: JSON.stringify escapes odd characters in names. */
+const scope = (cwd: string, dir: string): string => JSON.stringify(`${show(cwd, dir)}/`);
+
 /** The file content in a tag that says where it applies. Long files are cut, with a note. */
 function render(cwd: string, dir: string, file: string): string {
 	let text = readFileSync(file, "utf8").replace(/^\uFEFF/, "");
 	if (text.length > MAX_CHARS) text = `${text.slice(0, MAX_CHARS)}\n[truncated: read the file for the rest]`;
 	// JSON.stringify quotes and escapes odd characters in file names.
 	const path = JSON.stringify(show(cwd, file));
-	const scope = JSON.stringify(`${show(cwd, dir)}/`);
-	return `<nested_instructions path=${path} scope=${scope}>\n${text}\n</nested_instructions>`;
+	return `<nested_instructions path=${path} scope=${scope(cwd, dir)}>\n${text}\n</nested_instructions>`;
 }
 
 /** `a` followed by `b`. */
-const merge = (a: Found | undefined, b: Found | undefined): Found => ({
-	files: [...(a?.files ?? []), ...(b?.files ?? [])],
-	texts: [...(a?.texts ?? []), ...(b?.texts ?? [])],
-});
+const merge = (a: Found, b: Found): Found => ({ files: [...a.files, ...b.files], texts: [...a.texts, ...b.texts] });
+
+const none = (): Found => ({ files: [], texts: [] });
 
 export default function (pi: ExtensionAPI): void {
 	// pi's agent dir (~/.pi/agent). Read once: it does not change during a run.
@@ -118,19 +119,19 @@ export default function (pi: ExtensionAPI): void {
 	 * @param direct True when the tool output goes to the model: if `input` is itself an
 	 *               instruction file, the agent is reading it now, so it needs no copy.
 	 */
-	function find(cwd: string, input: unknown, direct: boolean, ctx: ExtensionContext): Found | undefined {
-		if (typeof input !== "string") return;
+	function find(cwd: string, input: unknown, direct: boolean, ctx: ExtensionContext): Found {
+		const found = none();
+		if (typeof input !== "string") return found;
 		// Spelled like pi's tools do: no leading @, and ~ is home. The call succeeded, so the file exists.
 		const target = real(resolve(cwd, input.replace(/^@/, "").replace(/^~(?=\/|$)/, homedir())));
-		if (!target) return;
+		if (!target) return found;
 		const top = within(cwd, target) ? cwd : gitRoot(dirname(target));
 		// Skip installed packages. Their AGENTS.md is written for the people who work on that
 		// package (or is even a persona prompt), not for this project, and any dependency could
 		// use it to steer the agent. Checked on the real path, so a workspace package that
 		// node_modules only links to (monorepo) still gets its rules.
-		if (!top || relative(top, target).split(sep).includes("node_modules")) return;
+		if (!top || relative(top, target).split(sep).includes("node_modules")) return found;
 
-		const found: Found = { files: [], texts: [] };
 		// Deepest first. Inside cwd, the last step is cwd itself, which `loadedByPi` skips.
 		// `prev` stops at "/", which is its own parent.
 		for (let dir = dirname(target), prev = ""; dir !== prev && within(top, dir); prev = dir, dir = dirname(dir)) {
@@ -152,9 +153,9 @@ export default function (pi: ExtensionAPI): void {
 			} catch (error) {
 				// The file was found a moment ago, so this is rare: no permission (EACCES), or deleted since.
 				const reason = error instanceof Error ? error.message : String(error);
-				ctx.ui.notify(`nested-agent-md: the agent did not get the rules of ${path}. Reading it failed: ${reason}. Fix the file, then /reload.`, "warning");
+				if (ctx.hasUI) ctx.ui.notify(`nested-agent-md: the agent did not get the rules of ${path}. Reading it failed: ${reason}. Fix the file, then /reload.`, "warning");
 				// Tell the model too, so it can read the file itself or tell the user.
-				found.texts.unshift(`[nested-agent-md] ${JSON.stringify(path)} has rules for ${JSON.stringify(`${show(cwd, dir)}/`)}, but reading it failed (${(error as NodeJS.ErrnoException).code ?? reason}). Its rules are NOT applied.`);
+				found.texts.unshift(`[nested-agent-md] ${JSON.stringify(path)} has rules for ${scope(cwd, dir)}, but reading it failed (${(error as NodeJS.ErrnoException).code ?? reason}). Its rules are NOT applied.`);
 			}
 		}
 		return found;
@@ -166,18 +167,18 @@ export default function (pi: ExtensionAPI): void {
 		if (!cwd) return;
 		const nested = event.parentToolCallId !== undefined;
 		// A failed call showed the agent nothing of its directories.
-		const own = event.isError || !TOOLS.includes(event.toolName) ? undefined : find(cwd, event.input.path, !nested, ctx);
+		const own = event.isError || !TOOLS.includes(event.toolName) ? none() : find(cwd, event.input.path, !nested, ctx);
 
 		if (nested) {
 			// Nested ids are `<outer id>/<n>` (deeper: `<outer id>/<n>/<m>`). Keep it for the outer result.
 			const outer = event.toolCallId.split("/")[0];
-			if (own) pending.set(outer, merge(pending.get(outer), own));
+			pending.set(outer, merge(pending.get(outer) ?? none(), own));
 			return;
 		}
 
 		// The outer result reaches the model even when it is an error (the script may have read
 		// files before it failed), so it gets what its nested calls found.
-		const found = merge(pending.get(event.toolCallId), own);
+		const found = merge(pending.get(event.toolCallId) ?? none(), own);
 		pending.delete(event.toolCallId);
 		if (found.files.length === 0 && found.texts.length === 0) return;
 

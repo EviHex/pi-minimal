@@ -33,7 +33,7 @@ function setup({ agentDir, sub = "" }: { agentDir?: string; sub?: string } = {})
 	const notes: string[] = [];
 	const ctx = {
 		cwd,
-		ui: { notify: (message: string) => notes.push(message) },
+		hasUI: true, ui: { notify: (message: string) => notes.push(message) },
 		sessionManager: { buildSessionProjection: () => ({ messages: history }) },
 	};
 
@@ -74,7 +74,7 @@ function setup({ agentDir, sub = "" }: { agentDir?: string; sub?: string } = {})
 		handlers[name]({}, ctx);
 	};
 
-	return { cwd, notes, file, call, added, emit, restart, history: () => [...history] };
+	return { cwd, ctx, notes, file, call, added, emit, restart, history: () => [...history] };
 }
 
 test("injects the chain root-most first, skips cwd, and only once", () => {
@@ -275,4 +275,14 @@ test("a file that cannot be read: the user and the model are told, once", () => 
 	t.restart();
 	chmodSync(join(t.cwd, "a/AGENTS.md"), 0o644);
 	assert.ok(t.added("read", "a/x"));
+});
+
+test("a file that cannot be read, without UI: the model is told, no notify", () => {
+	const t = setup();
+	t.ctx.hasUI = false;
+	t.file("a/AGENTS.md", "A");
+	t.file("a/x", "");
+	chmodSync(join(t.cwd, "a/AGENTS.md"), 0);
+	assert.match(t.added("read", "a/x")!, /reading it failed/);
+	assert.equal(t.notes.length, 0);
 });
