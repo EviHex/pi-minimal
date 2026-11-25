@@ -300,3 +300,9 @@ export function resultView(text: string, expanded: boolean, theme: Theme): Compo
 	box.addChild(new Text(preview.join("\n"), 0, 0));
 	return box;
 }
+
+/** Reply of `subagent_stop`: the session path and resume hint stay, as in the stop notice. */
+export function stopReply(child: Child): string {
+	const state = child.status === "running" ? "Stopping" : `Already ${child.status}:`;
+	return `${state} sub-agent #${child.id}${child.status === "running" ? "; it will not wake you" : ""}. Session: ${child.file} · Use resume: ${child.id} to continue.`;
+}

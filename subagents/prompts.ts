@@ -17,7 +17,7 @@ export interface SpawnArgs {
 
 /** Default `subagents` section of the system prompt. The `guidance` setting replaces it. */
 export const GUIDANCE = `- Delegation: Use \`subagent\` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: handle quick lookups, sequential steps, and routine checks yourself, and prefer one sub-agent over many. Give each a distinct scope, expected output, whether it may edit, and files no one else (you included) edits; don't redo delegated work.
-- Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave \`wait\` unset even when you need every result. Do other work or end your turn; share a \`group\` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set \`wait: true\` only when the user asks you to block. Use \`subagent_status\` or \`subagent_steer\` only when the user asks to peek at or redirect a running sub-agent.
+- Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave \`wait\` unset even when you need every result. Do other work or end your turn; share a \`group\` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set \`wait: true\` only when the user asks you to block. Use \`subagent_status\`, \`subagent_steer\` or \`subagent_stop\` only when the user asks to peek at, redirect or stop a running sub-agent.
 - Context & routing: Fork (default) when history helps—a brief directive suffices, and keeping the same model and thinking level reuses the prompt cache. Use \`fresh: true\` when history is irrelevant or would bias a requested review (pass paths, facts, constraints). Keep inherited settings by default; pair \`fresh\` with lower \`thinking\` (or a lighter model) for retrieval, summaries, or mechanical edits, and higher \`thinking\` for difficult judgment or debugging. Use \`resume\` for follow-ups.`;
 
 export const TOOL_DESCRIPTION = `Start or resume a sub-agent with your tools; only its final report returns. Default: background fork, delivered later as a message.`;
@@ -40,6 +40,8 @@ export function compactNote(running: { id: number; label?: string; task: string;
 }
 
 export const STATUS_TOOL_DESCRIPTION = `Non-blocking snapshot of a sub-agent by its #id: shows current activity, recent tool calls/text, context usage, or the final result if finished. Does not wait—background sub-agents wake you automatically when they finish.`;
+
+export const STOP_TOOL_DESCRIPTION = `Stop a running sub-agent by its #id; it will not wake you. Use \`subagent\` with \`resume\` to continue it later.`;
 
 export const STEER_TOOL_DESCRIPTION = `Send a steering message to a currently running sub-agent by its #id (delivered after its current tool finishes). Use \`subagent\` with \`resume\` instead if the sub-agent has already ended.`;
 

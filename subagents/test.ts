@@ -7,7 +7,7 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import { apply, outcome, piInvocation, startChild } from "./child.ts";
 import { dropForkDrift, forkBranch, forkFileText, inspectSessionFile, restoreRecords, sanitizeSessionText } from "./fork.ts";
 import { childPrompt, compactNote, formatModelShortlist, GUIDANCE, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, subagentsCompletions } from "./prompts.ts";
-import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, resultView, statusReport, widgetLines, writeSubagentSettings } from "./ui.ts";
+import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, resultView, statusReport, stopReply, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 // Minimal session entries: only the fields the code reads.
 const user = (id: string, ts = 1) => ({ type: "message", id, message: { role: "user", content: "hi", timestamp: ts } });
@@ -552,9 +552,15 @@ test("formatModelShortlist: enabled first, then current provider, then the rest;
 
 test("GUIDANCE has the three bullets and the status/steer rule; compactNote lists running sub-agents", () => {
 	assert.equal(GUIDANCE.split("\n").length, 3);
-	assert.match(GUIDANCE, /`subagent_status` or `subagent_steer` only when the user asks/);
+	assert.match(GUIDANCE, /`subagent_status`, `subagent_steer` or `subagent_stop` only when the user asks/);
 	assert.equal(compactNote([]), "");
 	const note = compactNote([{ id: 2, label: "audit auth", task: "long", group: "review" }, { id: 3, task: "do\nthing" }]);
 	assert.match(note, /still running/);
 	assert.match(note, /\n- #2 \[review\] audit auth\n- #3 do thing$/);
+});
+
+test("stopReply says stopping or already ended, with session and resume hint", () => {
+	const c = { id: 3, file: "/s/3.jsonl", status: "running" } as never;
+	assert.equal(stopReply(c), "Stopping sub-agent #3; it will not wake you. Session: /s/3.jsonl · Use resume: 3 to continue.");
+	assert.match(stopReply({ id: 3, file: "/s/3.jsonl", status: "done" } as never), /^Already done: sub-agent #3\. Session: \/s\/3\.jsonl/);
 });

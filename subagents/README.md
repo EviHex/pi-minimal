@@ -22,7 +22,8 @@ sub-agent:   [system prompt + tools][conversation ...............][task]
 - The agent can call `subagent_status` with `{ id }` for a non-blocking snapshot of a
   running sub-agent's recent tool calls and context usage (background sub-agents wake
   the main agent automatically when they finish), and `subagent_steer` with
-  `{ id, message }` to inject a steering message while a sub-agent is running.
+  `{ id, message }` to inject a steering message while a sub-agent is running, and
+  `subagent_stop` with `{ id }` to stop one (it never wakes the agent; resume it later).
 - You type `/subagents spawn [--fresh] [--model <provider/id>] [--thinking <level>] <task>`
   (alias: `/sa spawn ...`) to start one in the background yourself (with Tab completion
   for subcommands, flags, models and thinking levels). The main agent is told what you
@@ -59,7 +60,7 @@ The default guidance (the agent also gets `Available models: …`, a list frozen
 prompt cache stays valid):
 
 > - Delegation: Use `subagent` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: handle quick lookups, sequential steps, and routine checks yourself, and prefer one sub-agent over many. Give each a distinct scope, expected output, whether it may edit, and files no one else (you included) edits; don't redo delegated work.
-> - Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave `wait` unset even when you need every result. Do other work or end your turn; share a `group` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set `wait: true` only when the user asks you to block. Use `subagent_status` or `subagent_steer` only when the user asks to peek at or redirect a running sub-agent.
+> - Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave `wait` unset even when you need every result. Do other work or end your turn; share a `group` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set `wait: true` only when the user asks you to block. Use `subagent_status`, `subagent_steer` or `subagent_stop` only when the user asks to peek at, redirect or stop a running sub-agent.
 > - Context & routing: Fork (default) when history helps—a brief directive suffices, and keeping the same model and thinking level reuses the prompt cache. Use `fresh: true` when history is irrelevant or would bias a requested review (pass paths, facts, constraints). Keep inherited settings by default; pair `fresh` with lower `thinking` (or a lighter model) for retrieval, summaries, or mechanical edits, and higher `thinking` for difficult judgment or debugging. Use `resume` for follow-ups.
 
 ```json

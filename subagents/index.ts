@@ -19,11 +19,12 @@ import {
 	spawnNote,
 	STATUS_TOOL_DESCRIPTION,
 	STEER_TOOL_DESCRIPTION,
+	STOP_TOOL_DESCRIPTION,
 	subagentsCompletions,
 	THINKING_LEVELS,
 	TOOL_DESCRIPTION,
 } from "./prompts.ts";
-import { DEFAULT_FIELDS, FIELD_META, parseWidgetFields, resultView, statusReport, WIDGET_FIELDS, type WidgetField, widgetLines, writeSubagentSettings } from "./ui.ts";
+import { DEFAULT_FIELDS, FIELD_META, parseWidgetFields, resultView, statusReport, stopReply, WIDGET_FIELDS, type WidgetField, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 /** How deep this pi is: 0 for the user's, 1 for a sub-agent, 2 for its sub-agent... */
 const DEPTH = Number(process.env.PI_MINIMAL_SUBAGENT_DEPTH) || 0;
@@ -311,6 +312,23 @@ export default function (pi: ExtensionAPI) {
 				0,
 				0,
 			),
+	});
+
+	pi.registerTool({
+		name: "subagent_stop",
+		label: "Stop sub-agent",
+		description: STOP_TOOL_DESCRIPTION,
+		parameters: Type.Object({
+			id: Type.Number({ description: "Running sub-agent #id to stop." }),
+		}),
+		async execute(_id, params) {
+			const child = children.find((c) => c.id === params.id);
+			if (!child) throw new Error(`Sub-agent #${params.id} not found in this session.`);
+			const text = stopReply(child);
+			child.stop();
+			return { content: [{ type: "text", text }], details: {} };
+		},
+		renderCall: (args, theme) => new Text(theme.fg("toolTitle", theme.bold("subagent_stop ")) + theme.fg("accent", `#${args.id ?? ""}`), 0, 0),
 	});
 
 	pi.registerMessageRenderer("subagent", (message, { expanded }, theme) =>
