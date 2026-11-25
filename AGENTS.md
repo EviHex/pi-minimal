@@ -15,6 +15,8 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
   first time it touches that directory.
 - `subagents/` — `subagent` tool and `/spawn`: forks of the conversation, with the parent's
   tools and model, that reuse its prompt cache.
+- `todo/` — `todo` tool and `/todo`: a declarative todo list widget above the editor,
+  persisted to the session branch.
 
 ## Publishing
 

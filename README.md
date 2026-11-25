@@ -24,6 +24,7 @@ Others are still in development or being tested, and could be published or delet
 | [`dynamic-prompt`](./dynamic-prompt)       | Adds a prompt file to the system prompt only when its rule matches.             | From source (not yet published)             |
 | [`nested-agent-md`](./nested-agent-md)     | Subdirectory `AGENTS.md`/`CLAUDE.md` reach the agent on first access.           | From source (not yet published)             |
 | [`subagents`](./subagents)                 | Sub-agents that fork the conversation and reuse its prompt cache.               | From source (not yet published)             |
+| [`todo`](./todo)                           | `todo` tool and `/todo`: a todo list widget the agent keeps up to date.         | From source (not yet published)             |
 
 To try one without installing it: `pi -e npm:@pi-minimal/<extension-name>`.
 
