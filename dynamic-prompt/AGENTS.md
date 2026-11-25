@@ -26,13 +26,19 @@ system prompt (section `dynamic_prompt_<file name or name>`). See `README.md` fo
   The `?t=` query skips jiti's cache, which pi reuses on `/new` and `/resume`.
 - One always-on section `dynamic-prompt` (hyphen, so no rule name can clash) tells
   the agent where `rules.ts` and this `README.md` are. About 30 tokens; keep it short.
+- Static prompt: the `dynamic-prompt` section, about 30 tokens. Matching rules add their own text.
+- Smoke test: `index.ts` wiring (session_start, notifications, `/reload`) was NOT run in a live pi
+  after the split into `evaluate.ts`; only the pure module is tested.
+- A rule with empty text is skipped; a duplicate section key is notified (last wins).
 - No write anywhere. No settings, no commands.
 - Risk: `DefaultPackageManager` is a public SDK export, but not an extension API.
   If a pi upgrade breaks it, fix `session_start`.
 
 ## Files
 
-- `index.ts` — the extension.
+- `index.ts` — the extension (pi wiring, config reading).
+- `evaluate.ts` — pure logic: `enabledMcpServers`, `evaluateRules` (rules to sections + errors).
+- `test.ts` — `node:test` tests of `evaluate.ts`; run by `npm run check`.
 - `package.json` — `pi` manifest and package metadata.
 
 ## Conventions

@@ -60,7 +60,12 @@ Rules are evaluated at session start. Use `/reload` after a change. `rules.ts` i
 loaded like a pi extension, so TypeScript works as is.
 
 An error (in `rules.ts`, a `when()`, or a missing `.md` file) is shown as a notification. A
-rule that throws is skipped; the other rules still apply.
+rule that throws is skipped; the other rules still apply. A default export that is not
+an array, and a failure to read the pi config (then `c.extensions` lists only the extensions
+that registered a tool or command), are notified too.
+
+A rule whose prompt is empty is skipped. Two rules with the same section name (file `x.md`
+and name `x`) clash: the last one wins, and a notification says so.
 
 ## Settings
 
