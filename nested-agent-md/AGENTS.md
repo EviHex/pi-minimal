@@ -58,6 +58,11 @@ first. Top is cwd (excluded: pi loads it) for paths inside cwd, and the git root
 - `edit`/`write` are not blocked. Blocking would force a retry on every first write per
   directory. Revisit if agents ignore rules that arrive after the change.
 
+## Prompt cost and checks
+
+- Static prompt text: 0. Only tool results carry text, and only on first access to a directory.
+- Smoke test in a real pi (load, `/reload`, `/resume`, `/tree`): not done. `npm run check` uses a fake `pi`.
+
 ## Not done
 
 `.agents/skills` of nested
