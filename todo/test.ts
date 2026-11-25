@@ -15,7 +15,7 @@ import {
 	type TodoItem,
 	writeTodoSettings,
 } from "./core.ts";
-import { CLEAR_NOTICE, formatReminder, PROMPT_GUIDELINES, todoCompletions, TOOL_DESCRIPTION } from "./prompts.ts";
+import { CLEAR_NOTICE, formatReminder, resolveGuidelines, todoCompletions, TOOL_DESCRIPTION } from "./prompts.ts";
 
 // Each color wraps its text in a tag, so tests can see which color a part gets.
 const tag = (name: string) => (s: string) => `<${name}>${s}</${name}>`;
@@ -138,9 +138,17 @@ describe("settings", () => {
 			defaultMinimized: true,
 			hideCompletedOnNextTurn: false,
 			reminderInterval: 0,
+			guidelines: "default",
 		});
 		assert.deepEqual(parseTodoSettings({ defaultMinimized: "yes", hideCompletedOnNextTurn: 1, reminderInterval: -1 }), DEFAULT_SETTINGS);
 		assert.equal(parseTodoSettings({ reminderInterval: 2.5 }).reminderInterval, DEFAULT_SETTINGS.reminderInterval);
+	});
+
+	it("resolves guidelines presets, custom lines and bad values", () => {
+		assert.match(resolveGuidelines("always").join(" "), /EVERY task/);
+		assert.deepEqual(resolveGuidelines("off"), []);
+		assert.deepEqual(resolveGuidelines(parseTodoSettings({ guidelines: ["a", "b"] }).guidelines), ["a", "b"]);
+		for (const bad of ["nope", 3, ["a", 1], null]) assert.equal(parseTodoSettings({ guidelines: bad }).guidelines, "default");
 	});
 
 	it("writes under pi-minimal.todo without disturbing other settings", () => {
@@ -170,9 +178,10 @@ describe("prompts", () => {
 	});
 
 	it("keeps static text short and mentions the key rules", () => {
-		assert.equal(PROMPT_GUIDELINES.length, 2);
-		assert.match(PROMPT_GUIDELINES.join(" "), /3\+ steps/);
-		assert.match(PROMPT_GUIDELINES.join(" "), /in_progress/);
+		const d = resolveGuidelines("default");
+		assert.equal(d.length, 2);
+		assert.match(d.join(" "), /3\+ steps/);
+		assert.match(d.join(" "), /in_progress/);
 		assert.match(TOOL_DESCRIPTION, /pass \[\] to clear/);
 		assert.match(CLEAR_NOTICE, /\/todo clear/);
 	});

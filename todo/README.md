@@ -39,13 +39,14 @@ Remove other extensions that register a `todo` tool first: two tools with one na
 ## Settings
 
 Under `"pi-minimal"."todo"` in `~/.pi/agent/settings.json` (global) or `.pi/settings.json`
-(project). Read at session start (use `/reload`).
+(project). Read at session start (use `/reload`). `guidelines` is read when the extension loads.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `defaultMinimized` | boolean | `false` | Start with the one-line widget. |
 | `hideCompletedOnNextTurn` | boolean | `true` | Hide the widget when all items are done and a new turn starts. |
 | `reminderInterval` | integer | `8` | Tool calls between reminders while items are unfinished. `0` turns them off. |
+| `guidelines` | `"default"` \| `"always"` \| `"off"` \| string[] | `"default"` | Prompt lines for the tool. `default`: use `todo` for tasks with 3+ steps, skip trivial ones. `always`: use it on every task that needs tools. `off`: none. An array is used as is. Bad values mean `default`. Needs `/reload`. |
 
 ```json
 { "pi-minimal": { "todo": { "defaultMinimized": true, "reminderInterval": 5 } } }

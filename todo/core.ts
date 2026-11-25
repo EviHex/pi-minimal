@@ -113,23 +113,33 @@ export function renderLines(items: readonly TodoItem[], minimized: boolean, styl
 	return [header, ...rows];
 }
 
+export type GuidelinesSetting = "default" | "always" | "off" | string[];
+
 export interface TodoSettings {
 	defaultMinimized: boolean;
 	hideCompletedOnNextTurn: boolean;
 	/** Tool results between reminders while items are unfinished; 0 turns reminders off. */
 	reminderInterval: number;
+	/** Preset name, or custom prompt lines used as is. Read once at load. */
+	guidelines: GuidelinesSetting;
 }
 
-export const DEFAULT_SETTINGS: TodoSettings = { defaultMinimized: false, hideCompletedOnNextTurn: true, reminderInterval: 8 };
+export const DEFAULT_SETTINGS: TodoSettings = { defaultMinimized: false, hideCompletedOnNextTurn: true, reminderInterval: 8, guidelines: "default" };
+
+function parseGuidelines(v: unknown): GuidelinesSetting {
+	if (v === "default" || v === "always" || v === "off") return v;
+	return Array.isArray(v) && v.every((l) => typeof l === "string") ? v : "default";
+}
 
 /** `raw` is the `"pi-minimal"."todo"` object of settings.json. Bad values fall back to defaults. */
 export function parseTodoSettings(raw: unknown): TodoSettings {
 	const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-	const bool = (key: keyof TodoSettings) => (typeof r[key] === "boolean" ? (r[key] as boolean) : (DEFAULT_SETTINGS[key] as boolean));
+	const bool = (key: "defaultMinimized" | "hideCompletedOnNextTurn") => (typeof r[key] === "boolean" ? (r[key] as boolean) : DEFAULT_SETTINGS[key]);
 	const n = r.reminderInterval;
 	return {
 		defaultMinimized: bool("defaultMinimized"),
 		hideCompletedOnNextTurn: bool("hideCompletedOnNextTurn"),
+		guidelines: parseGuidelines(r.guidelines),
 		reminderInterval: typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : DEFAULT_SETTINGS.reminderInterval,
 	};
 }
@@ -146,4 +156,14 @@ export function writeTodoSettings(filePath: string, patch: Partial<TodoSettings>
 	root["pi-minimal"] = { ...ns, todo: { ...prev, ...patch } };
 	mkdirSync(dirname(filePath), { recursive: true });
 	writeFileSync(filePath, `${JSON.stringify(root, null, 2)}\n`);
+}
+
+/** The `"pi-minimal"."todo"` object of a settings file; `{}` when missing or broken. */
+export function readTodoRaw(filePath: string): Record<string, unknown> {
+	try {
+		const todo = JSON.parse(readFileSync(filePath, "utf8"))?.["pi-minimal"]?.todo;
+		return todo && typeof todo === "object" ? todo : {};
+	} catch {
+		return {};
+	}
 }

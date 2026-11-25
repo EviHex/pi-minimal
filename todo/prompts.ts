@@ -1,14 +1,25 @@
-import type { TodoItem } from "./core.ts";
+import type { GuidelinesSetting, TodoItem } from "./core.ts";
 
 export const TOOL_DESCRIPTION =
 	"Create or replace the session todo list rendered to the user. Send the full list each call; pass [] to clear. Keep at most one item in_progress at a time.";
 
 export const PROMPT_SNIPPET = "Track multi-step progress with a declarative todo list";
 
-export const PROMPT_GUIDELINES = [
+const DEFAULT_GUIDELINES = [
 	"Use `todo` for tasks with 3+ steps or several parts; skip it for trivial ones. Keep at most one item `in_progress`.",
 	"Mark an item `done` right after finishing it, before the next step or the end of your turn: never batch updates or leave the last item `in_progress`. Do not repeat the full list in chat.",
 ];
+
+const ALWAYS_GUIDELINES = [
+	"Use `todo` on EVERY task that needs tools, even a small one. Create the list before your first tool call and keep at most one item `in_progress`. Only pure chat with no tool call can skip it.",
+	"Mark an item `done` right after finishing it, before the next step or the end of your turn: never batch updates or leave the last item `in_progress`. Do not repeat the full list in chat.",
+];
+
+/** Prompt lines for a `guidelines` setting: a preset name, or custom lines as is. */
+export function resolveGuidelines(setting: GuidelinesSetting): string[] {
+	if (Array.isArray(setting)) return setting;
+	return setting === "always" ? ALWAYS_GUIDELINES : setting === "off" ? [] : DEFAULT_GUIDELINES;
+}
 
 export const CLEAR_NOTICE =
 	"The user cleared the todo list with /todo clear. The list is now empty; do not carry over previous items unless asked.";

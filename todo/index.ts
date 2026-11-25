@@ -7,8 +7,10 @@ import {
 	DEFAULT_SETTINGS,
 	ENTRY_TYPE,
 	formatSummary,
+	type GuidelinesSetting,
 	parseItems,
 	parseTodoSettings,
+	readTodoRaw,
 	renderLines,
 	replay,
 	type Style,
@@ -16,7 +18,7 @@ import {
 	type TodoSettings,
 	writeTodoSettings,
 } from "./core.ts";
-import { CLEAR_NOTICE, formatReminder, PROMPT_GUIDELINES, PROMPT_SNIPPET, TOOL_DESCRIPTION, todoCompletions } from "./prompts.ts";
+import { CLEAR_NOTICE, formatReminder, PROMPT_SNIPPET, resolveGuidelines, TOOL_DESCRIPTION, todoCompletions } from "./prompts.ts";
 
 const WIDGET_KEY = "todo";
 
@@ -71,12 +73,19 @@ export default function (pi: ExtensionAPI) {
 		paint();
 	};
 
+	// Guidelines are fixed at load: `pi.getSettings()` is not available yet, and pi reads
+	// `promptGuidelines` from the tool definition, so a change needs /reload.
+	const loaded = parseTodoSettings({
+		...readTodoRaw(join(getAgentDir(), "settings.json")),
+		...readTodoRaw(join(process.cwd(), ".pi", "settings.json")),
+	});
+
 	pi.registerTool({
 		name: "todo",
 		label: "todo",
 		description: TOOL_DESCRIPTION,
 		promptSnippet: PROMPT_SNIPPET,
-		promptGuidelines: PROMPT_GUIDELINES,
+		promptGuidelines: resolveGuidelines(loaded.guidelines),
 		parameters: Params,
 		async execute(_id, params) {
 			items = parseItems(params.items);
@@ -105,11 +114,19 @@ export default function (pi: ExtensionAPI) {
 					{ id: "defaultMinimized", label: "Start minimized", currentValue: onOff(settings.defaultMinimized), values: ["off", "on"] },
 					{ id: "hideCompletedOnNextTurn", label: "Hide when all done", currentValue: onOff(settings.hideCompletedOnNextTurn), values: ["on", "off"] },
 					{ id: "reminderInterval", label: "Update reminder", currentValue: settings.reminderInterval ? String(settings.reminderInterval) : "off", values: ["off", "5", "8", "12"] },
+					{
+						id: "guidelines",
+						label: "Guidelines",
+						currentValue: typeof settings.guidelines === "string" ? settings.guidelines : "custom",
+						values: ["default", "always", "off"],
+						description: "Prompt text for the todo tool. Applies after /reload. Replaces a custom list from settings.json.",
+					},
 				],
 				5,
 				getSettingsListTheme(),
 				(id, value) => {
-					const patch: Partial<TodoSettings> = id === "reminderInterval" ? { reminderInterval: value === "off" ? 0 : Number(value) } : { [id]: value === "on" };
+					const patch: Partial<TodoSettings> =
+						id === "reminderInterval" ? { reminderInterval: value === "off" ? 0 : Number(value) } : id === "guidelines" ? { guidelines: value as GuidelinesSetting } : { [id]: value === "on" };
 					settings = { ...settings, ...patch };
 					writeTodoSettings(file, patch);
 				},

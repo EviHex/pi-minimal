@@ -17,7 +17,12 @@ the branch on `session_start`, `session_compact` and `session_tree`. See `README
   tail, so earlier messages (the cached prefix) do not change.
 - Reminder: a counter of tool results (not nested calls) since the last `todo` call; at
   `reminderInterval` one text block is appended to the result. Only the tail changes.
-- Static prompt text (`PROMPT_GUIDELINES`) is two short lines: it is part of every request.
+- Static prompt text is two short lines: it is part of every request. `guidelines` setting
+  (`resolveGuidelines`): preset `default`/`always`/`off`, or a custom array. It is read at
+  extension load (`pi.getSettings()` throws before bind, so `index.ts` reads the global and
+  project `settings.json` files itself) and pi reads `promptGuidelines` from the tool
+  definition when it builds the tool registry, so it is fixed per load: a change needs
+  `/reload`. Never change it mid-session (prompt cache).
 - Settings are written only by `/todo settings` (`writeTodoSettings`, merge under
   `"pi-minimal"."todo"`); everything else only reads them. This is the one exception to
   the repo rule "extensions never write settings", because the user asks for it in a menu.
