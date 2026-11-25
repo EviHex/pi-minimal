@@ -33,6 +33,12 @@ A package is published when its `package.json` has all of this (copy from `menti
 Check the file list with `npm pack -w <name> --dry-run`. Bump the version before each
 publish: `npm publish -w <name>`.
 
+Once a package is published at version `1.0.0` or higher, other people may use it.
+Keep it backward compatible: do not rename or remove settings keys, commands, tool
+names or parameters, and do not change their meaning or defaults in a way that breaks
+existing setups. If a break cannot be avoided, keep reading the old form (with a
+warning) or bump the major version and document the migration in the `README.md`.
+
 ## Conventions
 
 - This repo is open source and general purpose. In code, prompts, docs and
