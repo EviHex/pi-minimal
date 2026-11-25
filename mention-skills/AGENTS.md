@@ -29,6 +29,13 @@ and the agent reads the file itself.
   unreadable file falls back to the path.
 - Settings: see `README.md` (single source).
 
+## Cost and tests
+
+- Static prompt text: the `mention_skills` section, 211 characters, about 50 tokens (chars/4),
+  on every request. It is fixed text, so the prompt cache stays valid.
+- `check.ts` covers path rewrite, attachments, skill-wins-clash and the autocomplete provider
+  (with a fake host provider). Not smoke-tested in a live pi: load, `/reload`, the `$` menu.
+
 ## Limits
 
 - Only prompts that start a run get attachments. Steering messages sent while the
