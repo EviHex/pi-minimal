@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type Child, piInvocation, snapshot, startChild } from "./child.ts";
 import { dropForkDrift, forkFileText, lastAssistantText, restoreRecords, sanitizeSessionText, type SubagentRecord } from "./fork.ts";
@@ -36,11 +36,33 @@ export default function (pi: ExtensionAPI) {
 	const history = new Map<number, SubagentRecord>();
 	let nextId = 1;
 	let session: ExtensionContext | undefined; // for the widget, which changes outside handlers
+	let tuiRef: TUI | undefined;
+	let agentRunning = false;
+	let reportedWorking = false;
 	let rerenderViewer: (() => void) | undefined;
 	let timer: NodeJS.Timeout | undefined; // ticks the widget's clocks
 	let guidance = GUIDANCE;
 	let closing = false;
 	let widgetMode: "auto" | "show" | "hide" = "auto";
+
+	/** Keep terminal tab indicators (OSC 7501 + OSC 9;4) active while background sub-agents run and the main agent is idle. */
+	const syncTerminalStatus = () => {
+		if (DEPTH > 0 || !tuiRef) return;
+		const running = children.filter((c) => c.status === "running").length;
+		if (agentRunning) {
+			reportedWorking = false;
+			return;
+		}
+		if (running > 0) {
+			reportedWorking = true;
+			tuiRef.terminal.setProgramStatus({ state: "working", app: "pi", message: `Sub-agents (${running} running)` });
+			tuiRef.terminal.setProgress(true);
+		} else if (reportedWorking) {
+			reportedWorking = false;
+			tuiRef.terminal.setProgramStatus({ state: "idle", app: "pi" });
+			tuiRef.terminal.setProgress(false);
+		}
+	};
 
 	const refresh = () => {
 		rerenderViewer?.();
@@ -48,13 +70,22 @@ export default function (pi: ExtensionAPI) {
 			process.stdout.write(`${JSON.stringify({ type: "subagent_children", children: children.map(snapshot) })}\n`);
 			return;
 		}
+		const running = children.filter((c) => c.status === "running").length;
+		pi.events.emit("subagents:status", { running, total: children.length });
 		if (!session?.hasUI) return;
 		const lines = widgetMode === "hide" ? [] : widgetLines(children, session.ui.theme, Date.now(), widgetMode === "show");
 		session.ui.setWidget(
 			"subagents",
-			lines.length ? () => ({ render: (w: number) => lines.map((l) => truncateToWidth(l, w)), invalidate() {} }) : undefined,
+			lines.length
+				? (tui: TUI) => {
+						tuiRef = tui;
+						queueMicrotask(syncTerminalStatus);
+						return { render: (w: number) => lines.map((l) => truncateToWidth(l, w)), invalidate() {} };
+					}
+				: undefined,
 		);
-		const anyRunning = lines.length > 0 && children.some((c) => c.status === "running");
+		syncTerminalStatus();
+		const anyRunning = lines.length > 0 && running > 0;
 		if (anyRunning && !timer) timer = setInterval(refresh, 1000);
 		if (!anyRunning) {
 			clearInterval(timer);
@@ -299,14 +330,28 @@ export default function (pi: ExtensionAPI) {
 		if (guidance) event.systemPromptOptions.sections.subagents = guidance;
 	});
 
+	pi.on("agent_start", () => {
+		agentRunning = true;
+		reportedWorking = false;
+	});
+
 	// Escape stops the agent: it stops every sub-agent too, so none wakes the agent up again.
 	pi.on("agent_settled", (event) => {
+		agentRunning = false;
 		if (event.aborted) stopAll();
+		// Run after pi's ProgramStatusReporter finishes reporting done/idle so background sub-agents keep the tab active.
+		queueMicrotask(syncTerminalStatus);
 	});
 
 	pi.on("session_shutdown", () => {
 		closing = true;
+		agentRunning = false;
 		stopAll();
+		if (reportedWorking && tuiRef) {
+			reportedWorking = false;
+			tuiRef.terminal.setProgramStatus({ state: "idle", app: "pi" });
+			tuiRef.terminal.setProgress(false);
+		}
 		clearInterval(timer);
 	});
 

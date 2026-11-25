@@ -67,6 +67,11 @@ inactive. See `README.md` for users.
   `customType: "subagents"` entry (`pi.appendEntry`) with `{ id, file, task, label,
   model, thinking }`; `session_start` restores them (`restoreRecords`) so `#id` stays
   monotonic and `resume` keeps working after a reload.
+- Terminal status: when the main agent settles while background sub-agents are still
+  running, `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps
+  `tui.terminal.setProgramStatus({ state: "working", ... })` (OSC 7501) and
+  `setProgress(true)` (OSC 9;4) active, and clears them once all children end. Also
+  emits `pi.events.emit("subagents:status", { running, total })`.
 - Not done: concurrency limit, timeout on runs, steering a running child, CLI flag
   passthrough, idle Escape.
 

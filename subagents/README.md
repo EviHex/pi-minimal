@@ -113,6 +113,10 @@ count, context window usage, elapsed time, and latest summary line.
   own run ends). Sub-agents nest 3 levels deep at most.
 - When a sub-agent's extension would change the prompt (for example plan mode, which
   each pi keeps in memory), the sub-agent keeps yours.
+- While background sub-agents run and the main agent is idle, the extension keeps
+  terminal activity indicators active via standard OSC 7501 (`setProgramStatus`) and
+  OSC 9;4 (`setProgress`), and emits `subagents:status` (`{ running, total }`) on
+  `pi.events` for other extensions.
 
 ## Limits
 
