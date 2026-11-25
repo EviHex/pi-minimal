@@ -117,8 +117,10 @@ restrict tools. Restart Pi after updating the extension itself.
 
 ## Check
 
+Run from a clone of the repository (the check is not part of the npm package):
+
 ```sh
-npm run check
+npm run check -w polyglot   # at the repo root
 # For a different installed Pi package directory:
 PI_CHECK_HOST=/path/to/@earendil-works/pi-coding-agent npm run check
 ```
