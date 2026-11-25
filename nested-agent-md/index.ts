@@ -152,9 +152,9 @@ export default function (pi: ExtensionAPI): void {
 			} catch (error) {
 				// The file was found a moment ago, so this is rare: no permission (EACCES), or deleted since.
 				const reason = error instanceof Error ? error.message : String(error);
-				ctx.ui.notify(`nested-context: the agent did not get the rules of ${path}. Reading it failed: ${reason}. Fix the file, then /reload.`, "warning");
+				ctx.ui.notify(`nested-agent-md: the agent did not get the rules of ${path}. Reading it failed: ${reason}. Fix the file, then /reload.`, "warning");
 				// Tell the model too, so it can read the file itself or tell the user.
-				found.texts.unshift(`[nested-context] ${JSON.stringify(path)} has rules for ${JSON.stringify(`${show(cwd, dir)}/`)}, but reading it failed (${(error as NodeJS.ErrnoException).code ?? reason}). Its rules are NOT applied.`);
+				found.texts.unshift(`[nested-agent-md] ${JSON.stringify(path)} has rules for ${JSON.stringify(`${show(cwd, dir)}/`)}, but reading it failed (${(error as NodeJS.ErrnoException).code ?? reason}). Its rules are NOT applied.`);
 			}
 		}
 		return found;

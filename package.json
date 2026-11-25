@@ -3,10 +3,10 @@
   "private": true,
   "workspaces": [
     "plan-mode",
-    "prompt-gate",
+    "dynamic-prompt",
     "polyglot",
     "mention-skills",
-    "nested-context",
+    "nested-agent-md",
     "subagents"
   ],
   "scripts": {

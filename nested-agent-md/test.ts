@@ -23,7 +23,7 @@ type Extra = { toolCallId?: string; parentToolCallId?: string; isError?: boolean
  * details the extension returned. Tests edit it to play /tree and compaction.
  */
 function setup({ agentDir, sub = "" }: { agentDir?: string; sub?: string } = {}) {
-	const dir = mkdtempSync(join(tmpdir(), "nested-context-"));
+	const dir = mkdtempSync(join(tmpdir(), "nested-agent-md-"));
 	symlinkSync(dir, `${dir}-link`);
 	const cwd = join(`${dir}-link`, sub);
 	mkdirSync(cwd, { recursive: true });

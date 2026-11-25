@@ -21,8 +21,8 @@ Others are still in development or being tested, and could be published or delet
 | [`plan-mode`](./plan-mode)                 | `/plan` toggles a read-only instruction in the system prompt.                   | `pi install npm:@pi-minimal/plan-mode`      |
 | [`mention-skills`](./mention-skills)       | `$` autocompletes skills and prompt templates. The agent gets their file paths. | `pi install npm:@pi-minimal/mention-skills` |
 | [`polyglot`](./polyglot)                   | `/lang` selects a saved language reminder.                                      | From source (not yet published)             |
-| [`prompt-gate`](./prompt-gate) | Adds a prompt file to the system prompt only when its rule matches.            | From source (not yet published)             |
-| [`nested-context`](./nested-context)       | Subdirectory `AGENTS.md`/`CLAUDE.md` reach the agent on first access.           | From source (not yet published)             |
+| [`dynamic-prompt`](./dynamic-prompt)       | Adds a prompt file to the system prompt only when its rule matches.             | From source (not yet published)             |
+| [`nested-agent-md`](./nested-agent-md)     | Subdirectory `AGENTS.md`/`CLAUDE.md` reach the agent on first access.           | From source (not yet published)             |
 | [`subagents`](./subagents)                 | Sub-agents that fork the conversation and reuse its prompt cache.               | From source (not yet published)             |
 
 To try one without installing it: `pi -e npm:@pi-minimal/<extension-name>`.

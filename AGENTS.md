@@ -6,12 +6,12 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
 `npm run check` at the root (or `npm run check -w <name>` for one package).
 
 - `plan-mode/` — `/plan` toggles a read-only instruction in the system prompt.
-- `prompt-gate/` — adds a prompt file to the system prompt only when its rule
+- `dynamic-prompt/` — adds a prompt file to the system prompt only when its rule
   in `rules.ts` matches (loaded extensions, cwd).
 - `polyglot/` — `/lang` selects a saved language reminder, with tag completion.
 - `mention-skills/` — `$` autocompletes skills and prompt templates; the agent gets
   their file paths.
-- `nested-context/` — the `AGENTS.md`/`CLAUDE.md` of a subdirectory reach the agent the
+- `nested-agent-md/` — the `AGENTS.md`/`CLAUDE.md` of a subdirectory reach the agent the
   first time it touches that directory.
 - `subagents/` — `subagent` tool and `/spawn`: forks of the conversation, with the parent's
   tools and model, that reuse its prompt cache.

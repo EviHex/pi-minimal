@@ -1,4 +1,4 @@
-# @pi-minimal/nested-context
+# @pi-minimal/nested-agent-md
 
 Pi loads the `AGENTS.md` (or `CLAUDE.md`) of your working directory and its parents
 at startup. This extension adds the ones **below** it, lazily: the first time the
@@ -35,7 +35,7 @@ Not on npm yet. Clone the repo and install from the folder:
 
 ```sh
 git clone https://github.com/EviHex/pi-minimal
-pi install ./pi-minimal/nested-context
+pi install ./pi-minimal/nested-agent-md
 ```
 
 ## Settings

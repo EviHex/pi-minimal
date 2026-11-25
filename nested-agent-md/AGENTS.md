@@ -1,4 +1,4 @@
-# @pi-minimal/nested-context
+# @pi-minimal/nested-agent-md
 
 Lazy nested `AGENTS.md`/`CLAUDE.md`. On a successful `tool_result` of `read`,
 `edit` or `write` (`TOOLS`), the instruction files of the directories

@@ -1,7 +1,7 @@
 {
-  "name": "@pi-minimal/nested-context",
-  "version": "0.1.0",
-  "description": "Minimal nested context for pi: AGENTS.md and CLAUDE.md files of a subdirectory reach the agent the first time it touches that directory.",
+  "name": "@pi-minimal/dynamic-prompt",
+  "version": "0.2.0",
+  "description": "Minimal dynamic prompt for pi: a prompt file is added to the system prompt only when its rule matches.",
   "type": "module",
   "keywords": [
     "pi-package",
@@ -16,17 +16,17 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^1.4.0",
+    "@earendil-works/pi-coding-agent": "^1.2.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "check": "tsc -p . && node --test test.ts"
+    "check": "tsc -p ."
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/EviHex/pi-minimal.git",
-    "directory": "nested-context"
+    "directory": "dynamic-prompt"
   },
   "license": "MIT",
   "files": [
