@@ -15,8 +15,13 @@ sub-agent:   [system prompt + tools][conversation ...............][task]
   `fresh: true` it starts with an empty conversation instead, and with `resume: <id>` it
   continues a finished or stopped sub-agent with its existing context. Pass `model`
   (`provider/id` or `id`), `thinking` (`off`, `minimal`, `low`, `medium`, `high`,
-  `xhigh`, `max`), and a short `label` as needed. It waits for the result, or with
-  `run_in_background` it goes on and the result arrives later as a message.
+  `xhigh`, `max`), a short `label`, and a `group` name as needed. It waits for the
+  result, or with `run_in_background` it goes on and the result arrives later as a
+  message (when several background sub-agents share a `group`, only the last one wakes
+  the agent).
+- The agent can call `subagent_status` with `{ id }` for a non-blocking snapshot of a
+  running sub-agent's recent tool calls and context usage (background sub-agents wake
+  the main agent automatically when they finish).
 - You type `/subagents spawn [--fresh] [--model <provider/id>] [--thinking <level>] <task>`
   (alias: `/sa spawn ...`) to start one in the background yourself (with Tab completion
   for subcommands, flags, models and thinking levels). The main agent is told what you
@@ -60,9 +65,12 @@ The default guidance:
 > (in-memory state like the parent's todo list is not shared; files in the working
 > directory are). To run several sub-agents in parallel
 > and collect all results together, call `subagent` concurrently in the foreground
-> (e.g. `Promise.allSettled` in `codemode`); use `run_in_background` only when you want
-> to return immediately and be woken later by a message. Do not use sub-agents for a
-> quick lookup. Give each sub-agent one precise task and say what it must report.
+> (e.g. `Promise.allSettled` in `codemode`). Use `run_in_background` when you want to
+> return control to the user immediately: do not poll or wait for a background
+> sub-agent—end your turn and its result will arrive as a message and wake you up when
+> done (use `subagent_status` only for a quick non-blocking progress peek). Do not use
+> sub-agents for a quick lookup. Give each sub-agent one precise task and say what it
+> must report.
 
 ```json
 { "pi-minimal": { "subagents": { "guidance": "Use the subagent tool, in the background, for every task that takes more than a few tool calls." } } }

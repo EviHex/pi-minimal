@@ -33,6 +33,55 @@ export function forkFileText(
 	return [head, ...forkBranch(branch)].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
 }
 
+export interface SubagentRecord {
+	id: number;
+	file: string;
+	task: string;
+	label: string;
+	model: string;
+	thinking: string;
+}
+
+/** Restore prior sub-agent records saved in the session branch (survives /reload and --resume). */
+export function restoreRecords(branch: SessionEntry[]): SubagentRecord[] {
+	const byId = new Map<number, SubagentRecord>();
+	for (const entry of branch) {
+		if (entry.type !== "custom" || entry.customType !== "subagents") continue;
+		const d = entry.data as Partial<SubagentRecord> | undefined;
+		if (typeof d?.id === "number" && typeof d.file === "string") {
+			byId.set(d.id, {
+				id: d.id,
+				file: d.file,
+				task: d.task ?? "",
+				label: d.label ?? d.task ?? "",
+				model: d.model ?? "",
+				thinking: d.thinking ?? "",
+			});
+		}
+	}
+	return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+
+/** Read the last assistant text from a saved sub-agent session JSONL (used after /reload or --resume). */
+export function lastAssistantText(text: string): string {
+	let last = "";
+	for (const line of text.split("\n")) {
+		if (!line.trim()) continue;
+		try {
+			const entry = JSON.parse(line);
+			if (entry?.type !== "message" || entry.message?.role !== "assistant" || !Array.isArray(entry.message.content)) continue;
+			const joined = entry.message.content
+				.flatMap((p: { type?: string; text?: string }) => (p.type === "text" && p.text ? [p.text] : []))
+				.join("\n")
+				.trim();
+			if (joined) last = joined;
+		} catch {
+			// skip truncated tail line
+		}
+	}
+	return last;
+}
+
 /**
  * Clean a saved session JSONL before resuming it: drop any truncated JSON tail line and cut an
  * unfinished tool-call turn (same rule as `forkBranch`) so the provider will accept the next prompt.

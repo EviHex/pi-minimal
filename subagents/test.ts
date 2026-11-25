@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { apply, outcome, piInvocation, startChild } from "./child.ts";
-import { dropForkDrift, forkBranch, forkFileText, sanitizeSessionText } from "./fork.ts";
+import { dropForkDrift, forkBranch, forkFileText, lastAssistantText, restoreRecords, sanitizeSessionText } from "./fork.ts";
 import { childPrompt, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, subagentsCompletions } from "./prompts.ts";
-import { formatContext, headline, resultView, transcript, Viewer, widgetLines } from "./ui.ts";
+import { formatContext, headline, resultView, statusReport, transcript, Viewer, widgetLines } from "./ui.ts";
 
 // Minimal session entries: only the fields the code reads.
 const user = (id: string, ts = 1) => ({ type: "message", id, message: { role: "user", content: "hi", timestamp: ts } });
@@ -113,32 +113,33 @@ test("stop() ends a running child as stopped", async () => {
 	assert.equal((await child.done).status, "stopped");
 });
 
-test("widgetLines renders a Todos-style tree including nested sub-agents, context usage and summary", () => {
-	const theme = { fg: (_c: string, t: string) => t } as never;
-	const kid = { id: 1, label: "sub task", status: "running", activity: "grep", tools: 2, contextTokens: 20_000, contextWindow: 200_000, summary: "", startedAt: 55_000, children: [] };
-	const running = { id: 2, task: "look\nat it", status: "running", activity: "bash", tools: 3, contextTokens: 50_000, contextWindow: 200_000, summary: "checking tests", startedAt: 0, children: [kid] } as never;
-	const done = { id: 1, task: "first", status: "done", contextTokens: 10_000, contextWindow: 200_000, summary: "all good", startedAt: 0, endedAt: 10_000, children: [] } as never;
-	assert.deepEqual(widgetLines([done], theme, 65_000), []);
-	assert.equal(widgetLines([done], theme, 65_000, true).length, 2);
-	assert.deepEqual(widgetLines([done, running], theme, 65_000), [
+const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as never;
+
+test("widgetLines renders a Todos-style tree including nested sub-agents, model/thinking, context usage and summary", () => {
+	const kid = { id: 1, label: "sub task", model: "", thinking: "", status: "running", activity: "grep", tools: 2, contextTokens: 20_000, contextWindow: 200_000, summary: "", startedAt: 55_000, children: [] };
+	const running = { id: 2, task: "look\nat it", model: "gw/anthropic/claude-opus-5-5", thinking: "medium", status: "running", activity: "bash", tools: 3, contextTokens: 58_000, contextWindow: 1_000_000, summary: "checking tests", startedAt: 0, children: [kid] } as never;
+	const done = { id: 1, task: "first", model: "", thinking: "", status: "done", contextTokens: 10_000, contextWindow: 200_000, summary: "all good", startedAt: 0, endedAt: 10_000, children: [] } as never;
+	assert.deepEqual(widgetLines([done], plain, 65_000), []);
+	assert.equal(widgetLines([done], plain, 65_000, true).length, 2);
+	assert.deepEqual(widgetLines([done, running], plain, 65_000), [
 		"● Sub-agents (1/2)",
-		"├─ ✓ #1 first · 10k/200k (5%) · 10s — all good",
-		"└─ ◐ #2 look at it · bash · 3 tools · 50k/200k (25%) · 1m05s — checking tests",
-		"   └─ ◐ #2.1 sub task · grep · 2 tools · 20k/200k (10%) · 10s",
+		"├─ ✓ #1 first › 10k/200k (5%) › 10s — all good",
+		"└─ ◐ #2 look at it › claude-opus-5-5 › think:med › bash › 3 tools › 58k/1.0M (6%) › 1m05s — checking tests",
+		"   └─ ◐ #2.1 sub task › grep › 2 tools › 20k/200k (10%) › 10s",
 	]);
 	assert.equal(formatContext(0, 200_000), "");
 	assert.equal(formatContext(500, 0), "500");
+	assert.equal(formatContext(58_000, 1_000_000), "58k/1.0M (6%)");
 });
 
 test("Viewer follows the end, scrolls up, and closes on Escape", () => {
-	const theme = { fg: (_c: string, t: string) => t } as never;
 	const text = (t: string) => ({ role: "assistant", content: [{ type: "text", text: t }] });
 	const messages = [{ role: "user" }, ...Array.from({ length: 20 }, (_, i) => text(`line ${i}`))];
 	const child = { id: 1, task: "t", file: "/f", status: "done", messages } as never;
 	let closed = false;
-	const tui = { terminal: { rows: 10 }, requestRender() {} } as never; // body rows: max(5, 10 * 0.8 - 2) = 6
-	const viewer = new Viewer(child, tui, theme, () => (closed = true));
-	const body = () => viewer.render(80).slice(1, -1);
+	const tui = { terminal: { rows: 12 }, requestRender() {} } as never; // body rows: max(5, 12 * 0.8 - 4) = 5
+	const viewer = new Viewer(child, tui, plain, () => (closed = true));
+	const body = () => viewer.render(80).slice(2, -2);
 	assert.deepEqual(body().at(-1), "line 19");
 	viewer.handleInput("\x1b[A"); // up
 	assert.deepEqual(body().at(-1), "line 18");
@@ -174,8 +175,6 @@ test("piInvocation reruns the script, a compiled binary, or pi from PATH", () =>
 	assert.deepEqual(piInvocation(["-p"], "/$bunfs/root/pi", "/opt/pi"), { command: "/opt/pi", args: ["-p"] });
 	assert.deepEqual(piInvocation(["-p"], "", "/usr/bin/node"), { command: "pi", args: ["-p"] });
 });
-
-const plain = { fg: (_c: string, t: string) => t } as never;
 
 test("transcript shows the task, text, tool calls, the start of tool results, and how it ended", () => {
 	const messages = [
@@ -219,7 +218,7 @@ test("apply counts tool starts, tracks nested subagent_children snapshots, and k
 	assert.equal(
 		apply(child, {
 			type: "subagent_children",
-			children: [{ id: 1, label: "sub", status: "running", activity: "read", tools: 0, contextTokens: 0, contextWindow: 0, summary: "", startedAt: 0, children: [] }],
+			children: [{ id: 1, label: "sub", model: "", thinking: "", status: "running", activity: "read", tools: 0, contextTokens: 0, contextWindow: 0, summary: "", startedAt: 0, children: [] }],
 		}),
 		true,
 	);
@@ -246,11 +245,10 @@ test("dropForkDrift: a message at forkedAt is the parent's; the patch can follow
 });
 
 test("widgetLines cuts a long task and counts time from the start", () => {
-	const theme = { fg: (_c: string, t: string) => t } as never;
 	const child = { id: 1, task: "x".repeat(61), status: "running", activity: "a", tools: 0, startedAt: 1000, children: [] } as never;
-	assert.deepEqual(widgetLines([child], theme, 61_000), [
+	assert.deepEqual(widgetLines([child], plain, 61_000), [
 		"● Sub-agents (0/1)",
-		`└─ ◐ #1 ${"x".repeat(51)}… · a · 0 tools · 1m00s`,
+		`└─ ◐ #1 ${"x".repeat(47)}… › a › 0 tools › 1m00s`,
 	]);
 });
 
@@ -274,18 +272,18 @@ test("resultView: the hint only past 3 lines, with the count", () => {
 test("Viewer: a short transcript shows from the start; Home, PgDn, PgUp, Down move", () => {
 	const text = (t: string) => ({ role: "assistant", content: [{ type: "text", text: t }] });
 	const many = Array.from({ length: 40 }, (_, i) => text(`line ${i}`));
-	const tui = { terminal: { rows: 20 }, requestRender() {} } as never; // body rows: 20 * 0.8 - 2 = 14
+	const tui = { terminal: { rows: 20 }, requestRender() {} } as never; // body rows: 20 * 0.8 - 4 = 12
 	const short = new Viewer({ id: 1, task: "t", file: "/f", status: "done", messages: [{ role: "user" }, text("only")] } as never, tui, plain, () => {});
-	assert.deepEqual(short.render(80).slice(1, -1), ["▶ t", "", "only"]);
+	assert.deepEqual(short.render(80).slice(2, -2), ["▶ t", "", "only"]);
 	const viewer = new Viewer({ id: 1, task: "t", file: "/f", status: "done", messages: [{ role: "user" }, ...many] } as never, tui, plain, () => {});
-	const body = () => viewer.render(80).slice(1, -1);
-	assert.equal(body().length, 14);
+	const body = () => viewer.render(80).slice(2, -2);
+	assert.equal(body().length, 12);
 	viewer.handleInput("\x1b[H"); // home
 	assert.equal(body()[0], "▶ t");
 	viewer.handleInput("\x1b[B"); // down
 	assert.equal(body()[0], "");
 	viewer.handleInput("\x1b[6~"); // page down
-	assert.equal(body()[0], "line 13");
+	assert.equal(body()[0], "line 11");
 	viewer.handleInput("\x1b[5~"); // page up
 	assert.equal(body()[0], "");
 	viewer.handleInput("x"); // not a key it uses
@@ -302,24 +300,23 @@ test("startChild keeps the end of stderr for a crash", async () => {
 	assert.equal(child.output, "exit code 2: ab");
 });
 
-test("widgetLines prefers label over task and truncates labels past 52 characters", () => {
-	const theme = { fg: (_c: string, t: string) => t } as never;
-	const child = { id: 1, task: "x".repeat(52), label: "x".repeat(52), status: "running", activity: "a", tools: 0, startedAt: 0, children: [] } as never;
-	assert.ok(widgetLines([child], theme, 0)[1].includes(`${"x".repeat(52)} ·`));
+test("widgetLines prefers label over task and truncates labels past 48 characters", () => {
+	const child = { id: 1, task: "x".repeat(48), label: "x".repeat(48), status: "running", activity: "a", tools: 0, startedAt: 0, children: [] } as never;
+	assert.ok(widgetLines([child], plain, 0)[1].includes(`${"x".repeat(48)} ›`));
 	const labeled = { id: 2, task: "very long task", label: "short", status: "running", activity: "a", tools: 0, startedAt: 0, children: [] } as never;
-	assert.equal(widgetLines([labeled], theme, 0)[1], "└─ ◐ #2 short · a · 0 tools · 0s");
+	assert.equal(widgetLines([labeled], plain, 0)[1], "└─ ◐ #2 short › a › 0 tools › 0s");
 });
 
 test("Viewer: scrolling back down to the end follows new lines again", () => {
 	const text = (t: string) => ({ role: "assistant", content: [{ type: "text", text: t }] });
 	const messages = [{ role: "user" }, ...Array.from({ length: 20 }, (_, i) => text(`line ${i}`))];
-	const tui = { terminal: { rows: 10 }, requestRender() {} } as never;
+	const tui = { terminal: { rows: 12 }, requestRender() {} } as never;
 	const viewer = new Viewer({ id: 1, task: "t", file: "/f", status: "done", messages } as never, tui, plain, () => {});
 	viewer.render(80);
 	viewer.handleInput("\x1b[A"); // up
 	viewer.handleInput("\x1b[B"); // down, back at the end
 	messages.push(text("new"));
-	assert.equal(viewer.render(80).at(-2), "new");
+	assert.equal(viewer.render(80).at(-3), "new");
 });
 
 test("parseSpawnArgs parses --fresh, --model and --thinking in any order, only as leading flags", () => {
@@ -437,6 +434,65 @@ test("subagentsCompletions completes subcommands and delegates `spawn ...` to sp
 		["spawn --model anthropic/claude-haiku-4-5 "],
 	);
 	assert.equal(subagentsCompletions("stop ", models), null);
+});
+
+test("statusReport formats running progress (recent calls/text + stats) and finished/stopped results", () => {
+	const messages = [
+		{ role: "user", content: "prompt" },
+		{ role: "assistant", content: [{ type: "text", text: "reading files" }, { type: "toolCall", name: "read", arguments: { path: "a.ts" } }] },
+	];
+	const running = {
+		id: 2,
+		task: "long task",
+		label: "review",
+		model: "anthropic/opus",
+		thinking: "high",
+		file: "/s/2.jsonl",
+		status: "running",
+		activity: "read",
+		tools: 4,
+		contextTokens: 40_000,
+		contextWindow: 200_000,
+		messages,
+		output: "",
+		startedAt: 0,
+	} as never;
+	const rep = statusReport(running, 30_000);
+	assert.match(rep, /Sub-agent #2 \[review\] \(anthropic\/opus, high\) running for 30s\./);
+	assert.match(rep, /Recent:\nreading files\n→ read \{"path":"a\.ts"\}/);
+	assert.match(rep, /Activity: read · 4 tools · 40k\/200k \(20%\) · Session: \/s\/2\.jsonl/);
+
+	const stopped = { ...(running as object), status: "stopped", output: "partial", endedAt: 10_000 } as never;
+	const stopRep = statusReport(stopped, 30_000);
+	assert.match(stopRep, /stopped by user after 10s\./);
+	assert.match(stopRep, /\n\npartial\n\n/);
+	assert.match(stopRep, /Use resume: 2 to continue\./);
+});
+
+test("lastAssistantText reads the last non-empty assistant text from a saved session JSONL", () => {
+	const raw = [
+		JSON.stringify({ type: "session", id: "x" }),
+		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "first" }] } }),
+		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "1", name: "read", arguments: {} }] } }),
+		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "final report" }] } }),
+		'{"truncated":',
+	].join("\n");
+	assert.equal(lastAssistantText(raw), "final report");
+	assert.equal(lastAssistantText(""), "");
+});
+
+test("restoreRecords reads persisted sub-agent metadata from custom session entries", () => {
+	const entries = [
+		user("u1"),
+		{ type: "custom", customType: "other", data: { id: 99, file: "/x" } },
+		{ type: "custom", customType: "subagents", data: { id: 2, file: "/s/2.jsonl", task: "t2", label: "L2", model: "a/b", thinking: "high" } },
+		{ type: "custom", customType: "subagents", data: { id: 1, file: "/s/1.jsonl", task: "t1" } },
+		{ type: "custom", customType: "subagents", data: { bad: true } },
+	] as never[];
+	assert.deepEqual(restoreRecords(entries), [
+		{ id: 1, file: "/s/1.jsonl", task: "t1", label: "t1", model: "", thinking: "" },
+		{ id: 2, file: "/s/2.jsonl", task: "t2", label: "L2", model: "a/b", thinking: "high" },
+	]);
 });
 
 test("sanitizeSessionText drops truncated tail lines and unfinished tool-call turns", () => {

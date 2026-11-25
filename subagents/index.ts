@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type Child, piInvocation, snapshot, startChild } from "./child.ts";
-import { dropForkDrift, forkFileText, sanitizeSessionText } from "./fork.ts";
+import { dropForkDrift, forkFileText, lastAssistantText, restoreRecords, sanitizeSessionText, type SubagentRecord } from "./fork.ts";
 import {
 	type ChildMode,
 	childPrompt,
@@ -15,11 +15,12 @@ import {
 	resolveModel,
 	resolveThinking,
 	spawnNote,
+	STATUS_TOOL_DESCRIPTION,
 	subagentsCompletions,
 	THINKING_LEVELS,
 	TOOL_DESCRIPTION,
 } from "./prompts.ts";
-import { formatContext, headline, resultView, Viewer, widgetLines } from "./ui.ts";
+import { resultView, statusReport, Viewer, widgetLines } from "./ui.ts";
 
 /** How deep this pi is: 0 for the user's, 1 for a sub-agent, 2 for its sub-agent... */
 const DEPTH = Number(process.env.PI_MINIMAL_SUBAGENT_DEPTH) || 0;
@@ -28,21 +29,12 @@ const FORKED_AT = Number(process.env.PI_MINIMAL_SUBAGENT_FORKED_AT) || 0;
 /** Guard against a fork bomb: a sub-agent at this depth cannot start another. */
 const MAX_DEPTH = 3;
 
-const resultText = (child: Child) => {
-	const meta = [
-		`${child.tools} tools`,
-		formatContext(child.contextTokens, child.contextWindow),
-		`Session: ${child.file}`,
-		child.status === "stopped" ? `Use resume: ${child.id} to continue.` : "",
-	]
-		.filter(Boolean)
-		.join(" · ");
-	return [headline(child), child.output, meta].filter(Boolean).join("\n\n");
-};
 const oneLine = (text: string) => (text.length > 100 ? `${text.slice(0, 99)}…` : text).replace(/\s+/g, " ");
 
 export default function (pi: ExtensionAPI) {
 	const children: Child[] = [];
+	const history = new Map<number, SubagentRecord>();
+	let nextId = 1;
 	let session: ExtensionContext | undefined; // for the widget, which changes outside handlers
 	let rerenderViewer: (() => void) | undefined;
 	let timer: NodeJS.Timeout | undefined; // ticks the widget's clocks
@@ -58,7 +50,10 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (!session?.hasUI) return;
 		const lines = widgetMode === "hide" ? [] : widgetLines(children, session.ui.theme, Date.now(), widgetMode === "show");
-		session.ui.setWidget("subagents", lines.length ? lines : undefined);
+		session.ui.setWidget(
+			"subagents",
+			lines.length ? () => ({ render: (w: number) => lines.map((l) => truncateToWidth(l, w)), invalidate() {} }) : undefined,
+		);
 		const anyRunning = lines.length > 0 && children.some((c) => c.status === "running");
 		if (anyRunning && !timer) timer = setInterval(refresh, 1000);
 		if (!anyRunning) {
@@ -77,12 +72,14 @@ export default function (pi: ExtensionAPI) {
 	function launch(
 		task: string,
 		ctx: ExtensionContext,
-		opts: { fresh?: boolean; resume?: number; label?: string; model?: string; thinking?: string } = {},
+		opts: { fresh?: boolean; resume?: number; label?: string; group?: string; model?: string; thinking?: string } = {},
 	): Child {
 		if (DEPTH >= MAX_DEPTH) throw new Error(`Sub-agents nest at most ${MAX_DEPTH} levels deep: this one cannot start another.`);
-		const prev = opts.resume !== undefined ? children.find((c) => c.id === opts.resume) : undefined;
+		const livePrev = opts.resume !== undefined ? children.find((c) => c.id === opts.resume) : undefined;
+		const prev = livePrev ?? (opts.resume !== undefined ? history.get(opts.resume) : undefined);
 		if (opts.resume !== undefined && !prev) throw new Error(`Sub-agent #${opts.resume} not found in this session.`);
-		if (prev?.status === "running") throw new Error(`Sub-agent #${prev.id} is still running.`);
+		if (livePrev?.status === "running") throw new Error(`Sub-agent #${livePrev.id} is still running.`);
+		if (prev && !existsSync(prev.file)) throw new Error(`Session file for sub-agent #${prev.id} no longer exists: ${prev.file}`);
 		const mode: ChildMode = prev ? "resume" : opts.fresh ? "fresh" : "fork";
 		const model = resolveModel(opts.model ?? (prev?.model || undefined), ctx.model, availableModels(ctx));
 		const thinking = resolveThinking(opts.thinking ?? (prev?.thinking || undefined), pi.getThinkingLevel());
@@ -106,23 +103,30 @@ export default function (pi: ExtensionAPI) {
 		else delete env.PI_MINIMAL_SUBAGENT_FORKED_AT;
 		const fullModel = `${model.provider}/${model.id}`;
 		const label = opts.label?.trim() || (prev && prev.label !== prev.task ? prev.label : undefined);
-		const child = startChild(children.length + 1, task, file, piInvocation(args), ctx.cwd, env, refresh, {
+		const child = startChild(nextId++, task, file, piInvocation(args), ctx.cwd, env, refresh, {
 			label,
 			model: fullModel,
 			thinking,
+			group: opts.group,
 			contextWindow: model.contextWindow,
 		});
 		children.push(child);
+		if (DEPTH === 0) {
+			const rec: SubagentRecord = { id: child.id, file, task, label: child.label, model: fullModel, thinking };
+			history.set(child.id, rec);
+			pi.appendEntry("subagents", rec);
+		}
 		refresh();
 		return child;
 	}
 
-	/** Send the result of a background child when it ends. Only a child that was not stopped wakes the agent. */
+	/** Send the result of a background child when it ends. Stopped children and non-final members of a running group do not wake the agent. */
 	const deliverLater = (child: Child) =>
 		void child.done.then(() => {
 			if (closing) return;
-			const content = resultText(child);
-			pi.sendMessage({ customType: "subagent", content, display: true }, { triggerTurn: child.status !== "stopped" });
+			const waitForGroup = Boolean(child.group && children.some((c) => c.group === child.group && c.status === "running"));
+			const content = statusReport(child);
+			pi.sendMessage({ customType: "subagent", content, display: true }, { triggerTurn: child.status !== "stopped" && !waitForGroup });
 		});
 
 	pi.registerTool({
@@ -142,12 +146,14 @@ export default function (pi: ExtensionAPI) {
 				),
 			),
 			run_in_background: Type.Optional(Type.Boolean({ description: "Return at once; the result arrives later as a message." })),
+			group: Type.Optional(Type.String({ description: "Batch group name (with run_in_background): only wakes you once when the last sub-agent in the group finishes." })),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const child = launch(params.task, ctx, {
 				fresh: params.fresh,
 				resume: params.resume,
 				label: params.label,
+				group: params.group,
 				model: params.model,
 				thinking: params.thinking,
 			});
@@ -162,8 +168,8 @@ export default function (pi: ExtensionAPI) {
 			signal?.addEventListener("abort", child.stop, { once: true });
 			await child.done;
 			signal?.removeEventListener("abort", child.stop);
-			if (child.status !== "done") throw new Error(resultText(child));
-			return { content: [{ type: "text", text: resultText(child) }], details: {} };
+			if (child.status !== "done") throw new Error(statusReport(child));
+			return { content: [{ type: "text", text: statusReport(child) }], details: {} };
 		},
 		renderCall: (args, theme) => {
 			const flags = [
@@ -185,6 +191,35 @@ export default function (pi: ExtensionAPI) {
 		},
 		renderResult: (result, { expanded, isPartial }, theme) => {
 			if (isPartial) return new Text(theme.fg("dim", "running…"), 0, 0);
+			const part = result.content[0];
+			return resultView(part?.type === "text" ? part.text : "", expanded, theme);
+		},
+	});
+
+	pi.registerTool({
+		name: "subagent_status",
+		label: "Sub-agent status",
+		description: STATUS_TOOL_DESCRIPTION,
+		parameters: Type.Object({
+			id: Type.Number({ description: "Sub-agent #id to inspect." }),
+		}),
+		async execute(_id, params) {
+			const child = children.find((c) => c.id === params.id);
+			if (child) return { content: [{ type: "text", text: statusReport(child) }], details: {} };
+			const prior = history.get(params.id);
+			if (prior) {
+				const spec = [prior.model, prior.thinking].filter(Boolean).join(", ");
+				const head = `Sub-agent #${prior.id}${prior.label && prior.label !== prior.task ? ` [${oneLine(prior.label)}]` : ""}${spec ? ` (${spec})` : ""} (from before reload).`;
+				const output = existsSync(prior.file) ? lastAssistantText(readFileSync(prior.file, "utf8")) : "";
+				const meta = `Session: ${prior.file} · Use resume: ${prior.id} to continue.`;
+				return { content: [{ type: "text", text: [head, output, meta].filter(Boolean).join("\n\n") }], details: {} };
+			}
+			throw new Error(`Sub-agent #${params.id} not found in this session.`);
+		},
+		renderCall: (args, theme) =>
+			new Text(theme.fg("toolTitle", theme.bold("subagent_status ")) + theme.fg("accent", `#${args.id ?? ""}`), 0, 0),
+		renderResult: (result, { expanded, isPartial }, theme) => {
+			if (isPartial) return new Text(theme.fg("dim", "checking…"), 0, 0);
 			const part = result.content[0];
 			return resultView(part?.type === "text" ? part.text : "", expanded, theme);
 		},
@@ -246,11 +281,17 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("subagents", commandSpec);
 	pi.registerCommand("sa", commandSpec);
 
-	// Read at session_start: settings are not available while the extension loads.
+	// Read at session_start: settings and prior sub-agent history are not available while the extension loads.
 	pi.on("session_start", (_event, ctx) => {
 		session = ctx;
 		const settings = pi.getSettings() as { "pi-minimal"?: { subagents?: { guidance?: string } } };
 		guidance = settings["pi-minimal"]?.subagents?.guidance ?? GUIDANCE;
+		if (DEPTH === 0) {
+			history.clear();
+			for (const rec of restoreRecords(ctx.sessionManager.getBranch())) history.set(rec.id, rec);
+			const maxId = Math.max(0, ...children.map((c) => c.id), ...history.keys());
+			nextId = maxId + 1;
+		}
 	});
 
 	// Same text in every fork, so it does not break the prompt cache.

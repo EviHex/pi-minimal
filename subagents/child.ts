@@ -11,6 +11,8 @@ export type Status = "running" | "done" | "failed" | "stopped";
 export interface ChildSnapshot {
 	id: number;
 	label: string;
+	model: string;
+	thinking: string;
 	status: Status;
 	activity: string;
 	tools: number;
@@ -32,6 +34,8 @@ export interface Child {
 	model: string;
 	/** Thinking level used. */
 	thinking: string;
+	/** Optional group name: background children in a group only wake the parent when the last one ends. */
+	group?: string;
 	/** Its session file. `pi --session <file>` opens it. */
 	file: string;
 	status: Status;
@@ -60,11 +64,13 @@ export interface Child {
 export const snapshot = (
 	child: Pick<
 		Child,
-		"id" | "label" | "status" | "activity" | "tools" | "contextTokens" | "contextWindow" | "summary" | "startedAt" | "endedAt" | "children"
+		"id" | "label" | "model" | "thinking" | "status" | "activity" | "tools" | "contextTokens" | "contextWindow" | "summary" | "startedAt" | "endedAt" | "children"
 	>,
 ): ChildSnapshot => ({
 	id: child.id,
 	label: child.label,
+	model: child.model,
+	thinking: child.thinking,
 	status: child.status,
 	activity: child.activity,
 	tools: child.tools,
@@ -164,6 +170,7 @@ export interface ChildMeta {
 	label?: string;
 	model?: string;
 	thinking?: string;
+	group?: string;
 	contextWindow?: number;
 }
 
@@ -187,6 +194,7 @@ export function startChild(
 		label: meta.label?.trim() || task,
 		model: meta.model ?? "",
 		thinking: meta.thinking ?? "",
+		group: meta.group?.trim() || undefined,
 		file,
 		status: "running",
 		activity: "starting",

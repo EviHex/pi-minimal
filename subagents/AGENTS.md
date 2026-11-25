@@ -63,9 +63,12 @@ inactive. See `README.md` for users.
 
 ## Not done
 
-- Not done: concurrency limit, timeout, steering a running child, a result tool
-  (parallel batching uses foreground concurrent calls / `codemode` `Promise.allSettled`;
-  results of background runs are pushed), CLI flag passthrough, idle Escape.
+- Persistence across `/reload` and `--resume`: at depth 0, each launch appends a
+  `customType: "subagents"` entry (`pi.appendEntry`) with `{ id, file, task, label,
+  model, thinking }`; `session_start` restores them (`restoreRecords`) so `#id` stays
+  monotonic and `resume` keeps working after a reload.
+- Not done: concurrency limit, timeout on runs, steering a running child, CLI flag
+  passthrough, idle Escape.
 
 ## Files
 
