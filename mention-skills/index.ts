@@ -40,12 +40,12 @@ export default function mentionSkills(pi: ExtensionAPI) {
 		settings = all["pi-minimal"]?.["mention-skills"] ?? {};
 		names = new Map();
 		const commands = pi.getCommands();
-		// Prompts first, then skills, so a skill wins on a name clash.
-		for (const c of commands)
-			if (c.source === "prompt") names.set(c.name, { kind: "prompt", path: c.sourceInfo.path, description: c.description });
-		for (const c of commands)
-			if (c.source === "skill")
-				names.set(c.name.slice("skill:".length), { kind: "skill", path: c.sourceInfo.path, description: c.description });
+		// A skill wins on a name clash, whatever the order.
+		for (const c of commands) {
+			if (c.source === "skill") names.set(c.name.slice("skill:".length), { kind: "skill", path: c.sourceInfo.path, description: c.description });
+			else if (c.source === "prompt" && names.get(c.name)?.kind !== "skill")
+				names.set(c.name, { kind: "prompt", path: c.sourceInfo.path, description: c.description });
+		}
 
 		ctx.ui.addAutocompleteProvider((current) => ({
 			triggerCharacters: [...(current.triggerCharacters ?? []), "$"],
@@ -103,7 +103,7 @@ export default function mentionSkills(pi: ExtensionAPI) {
 		const inContext = new Set<string>();
 		for (const entry of ctx.sessionManager.buildContextEntries())
 			if (entry.type === "custom_message" && entry.customType === ATTACHMENT)
-				for (const { name } of entry.details as Attached) inContext.add(name);
+				for (const { name } of (entry.details as Attached | undefined) ?? []) inContext.add(name);
 
 		const attached: Attached = [];
 		const blocks: string[] = [];
