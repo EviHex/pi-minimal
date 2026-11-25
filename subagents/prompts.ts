@@ -16,25 +16,62 @@ export interface SpawnArgs {
 }
 
 /** Default `subagents` section of the system prompt. The `guidance` setting replaces it. */
-export const GUIDANCE = `Use the \`subagent\` tool to hand a self-contained task to a sub-agent with your tools; its final message comes back to you. By default it forks this conversation (sees everything above and reuses the prompt cache); pass \`fresh: true\` for an empty conversation when the history above is not needed, and include all context in \`task\`. Pass \`model\` (provider/id or id) and/or \`thinking\` (off, minimal, low, medium, high, xhigh, max) to override the current model or thinking level; changing the model misses the prompt cache on a fork, so it pairs best with \`fresh: true\`. Pass \`label\` for a short status label when \`task\` is long, and \`resume: <id>\` to continue a finished or stopped sub-agent with its existing context. Each sub-agent runs in its own process (in-memory state like the parent's todo list is not shared; files in the working directory are). Use \`run_in_background\` when you want to return control to the user immediately: do not poll or wait for a background sub-agent—end your turn and its result will arrive as a message and wake you up when done (use \`subagent_status\` only for a quick non-blocking progress peek). When launching a batch of background sub-agents whose results you want to process together, give them the same \`group\` name so earlier results are delivered quietly and you are woken once when the whole group finishes. Do not use sub-agents for a quick lookup. Give each sub-agent one precise task and say what it must report.`;
+export const GUIDANCE = `- Delegation: Use \`subagent\` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: handle quick lookups, sequential steps, and routine checks yourself, and prefer one sub-agent over many. Give each a distinct scope, expected output, whether it may edit, and files no one else (you included) edits; don't redo delegated work.
+- Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave \`wait\` unset even when you need every result. Do other work or end your turn; share a \`group\` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set \`wait: true\` only when the user asks you to block. Use \`subagent_status\` or \`subagent_steer\` only when the user asks to peek at or redirect a running sub-agent.
+- Context & routing: Fork (default) when history helps—a brief directive suffices, and keeping the same model and thinking level reuses the prompt cache. Use \`fresh: true\` when history is irrelevant or would bias a requested review (pass paths, facts, constraints). Keep inherited settings by default; pair \`fresh\` with lower \`thinking\` (or a lighter model) for retrieval, summaries, or mechanical edits, and higher \`thinking\` for difficult judgment or debugging. Use \`resume\` for follow-ups.`;
 
-export const TOOL_DESCRIPTION = `Start or resume a sub-agent with your tools. By default it forks this conversation; pass \`fresh: true\` for an empty conversation, or \`resume: <id>\` to continue a finished/stopped sub-agent. Optionally pass \`model\`, \`thinking\`, a short \`label\`, and a \`group\` name (with \`run_in_background\`, wakes you once when the whole group finishes). Its final message comes back to you. With \`run_in_background\`, the call returns at once and the result arrives later as a message; do not poll or wait for it.`;
+export const TOOL_DESCRIPTION = `Start or resume a sub-agent with your tools; only its final report returns. Default: background fork, delivered later as a message.`;
+
+/** Frozen list of models the agent may pass to `model`: enabled models first, then the current provider's, then the rest. */
+export function formatModelShortlist(models: ModelRef[], enabledModels: string[] = [], currentProvider?: string, max = 15): string {
+	const full = (m: ModelRef) => `${m.provider}/${m.id}`;
+	const byName = (a: ModelRef, b: ModelRef) => full(a).localeCompare(full(b));
+	const enabled = enabledModels.flatMap((e) => models.filter((m) => [full(m), m.id].some((n) => n.toLowerCase() === e.trim().toLowerCase())));
+	const rest = [...models].sort(byName);
+	const ordered = [...enabled, ...rest.filter((m) => m.provider === currentProvider), ...rest];
+	return [...new Set(ordered.map(full))].slice(0, max).join(", ");
+}
+
+/** Reminder sent after `/compact`, which summarizes away the "started in the background" tool results. */
+export function compactNote(running: { id: number; label?: string; task: string; group?: string }[]): string {
+	if (!running.length) return "";
+	const line = (c: (typeof running)[number]) => `- #${c.id}${c.group ? ` [${c.group}]` : ""} ${(c.label || c.task).replace(/\s+/g, " ").trim().slice(0, 100)}`;
+	return `Context was compacted. These background sub-agents are still running; each result still arrives as a message when it ends:\n${running.map(line).join("\n")}`;
+}
 
 export const STATUS_TOOL_DESCRIPTION = `Non-blocking snapshot of a sub-agent by its #id: shows current activity, recent tool calls/text, context usage, or the final result if finished. Does not wait—background sub-agents wake you automatically when they finish.`;
 
-const RULES =
-	"Do the task below yourself; do not give it to another sub-agent. If you are blocked on a decision or missing info only the parent can supply, stop and state the exact question in your final message so the parent can resume you with the answer. Your final message is all the parent agent gets back: make it complete and concise.";
+export const STEER_TOOL_DESCRIPTION = `Send a steering message to a currently running sub-agent by its #id (delivered after its current tool finishes). Use \`subagent\` with \`resume\` instead if the sub-agent has already ended.`;
+
+const BLOCKED_AND_OUTPUT_RULES =
+	"If you are blocked on a decision or missing info only the parent can supply, stop and state the exact question in your final message so the parent can resume you with the answer. Your final message is all the parent agent gets back: make it complete and concise.";
+
+const DEFAULT_NESTING_RULE = "Do the task below yourself; do not give it to another sub-agent.";
 
 export type ChildMode = "fork" | "fresh" | "resume";
 
+export interface ChildPromptOptions {
+	depth?: number;
+	maxDepth?: number;
+	allowNested?: boolean;
+}
+
 const MODE_INTRO: Record<ChildMode, string> = {
-	fork: "You are now a sub-agent: a fork of the agent in the conversation above. That conversation is context only: the parent agent handles its requests, including the one that started you.",
+	fork: "You are now a sub-agent: a fork of the agent in the conversation above. That conversation is context only—the parent already handled every request in it, including spawning you. Do ONLY the Task below yourself; never re-spawn yourself or re-delegate the task.",
 	fresh: "You are a sub-agent.",
 	resume: "You are resuming your previous sub-agent session above.",
 };
 
-/** The first message of a sub-agent (forked, fresh, or resumed). */
-export const childPrompt = (task: string, mode: ChildMode = "fork") => `${MODE_INTRO[mode]} ${RULES}\n\nTask:\n${task}`;
+function nestingRule(opts?: ChildPromptOptions): string {
+	if (opts?.depth === undefined || opts?.maxDepth === undefined) return DEFAULT_NESTING_RULE;
+	const depth = `Depth ${opts.depth}/${opts.maxDepth}`;
+	if (opts.allowNested === false || opts.depth >= opts.maxDepth) return `${depth}: the \`subagent\` tool is disabled here—complete this task directly.`;
+	return `${depth}. Own this task; delegate only a small, self-contained noisy lookup (never the whole task). Nested calls block automatically (parallel within one message)—ignore the background/wait/group guidance above.`;
+}
+
+/** The first message of a sub-agent (forked, fresh, or resumed). Sits after the cached prefix. */
+export const childPrompt = (task: string, mode: ChildMode = "fork", opts?: ChildPromptOptions) =>
+	`${MODE_INTRO[mode]} ${nestingRule(opts)} ${BLOCKED_AND_OUTPUT_RULES}\n\nTask:\n${task}`;
 
 /** Parse `/spawn [--fresh] [--model <model>] [--thinking <level>] <task>`. */
 export function parseSpawnArgs(args: string): SpawnArgs {
@@ -165,9 +202,8 @@ export function spawnCompletions(argumentText: string, models: ModelRef[]) {
 
 const SUBCOMMANDS = [
 	{ name: "spawn", value: "spawn ", description: "Start a background sub-agent [--fresh] [--model] [--thinking] <task>" },
-	{ name: "stop", value: "stop", description: "Stop all running sub-agents" },
-	{ name: "show", value: "show", description: "Show the sub-agents tree widget" },
-	{ name: "hide", value: "hide", description: "Hide the sub-agents tree widget" },
+	{ name: "minimize", value: "minimize", description: "Toggle the widget between full tree and one-line summary" },
+	{ name: "settings", value: "settings", description: "Configure visible widget fields interactively" },
 ];
 
 /** Argument completions for `/subagents` and `/sa`. */

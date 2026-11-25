@@ -1,7 +1,8 @@
 # @pi-minimal/subagents
 
-A sub-agent is a `pi --mode json --session <copy>` process. By default it forks the
-parent's branch with one new user message (`childPrompt(task, "fork")`); with
+A sub-agent is a `pi --mode rpc --session <copy>` process (prompt and optional `steer`
+commands are sent over stdin JSONL; stdin closes when `agent_settled` arrives). By
+default it forks the parent's branch with one new user message (`childPrompt(task, "fork")`); with
 `fresh: true` (or `/spawn --fresh`) the copied session file has only the header and
 starts empty with `childPrompt(task, "fresh")`; with `resume: <id>` it cleans any
 truncated tail or unfinished tool-call turn in the prior child's `.jsonl`
@@ -48,6 +49,13 @@ inactive. See `README.md` for users.
 - Delivery: `pi.sendMessage(customType "subagent", triggerTurn: true)` (steer while the
   parent streams). A stopped child gets `triggerTurn: false`: the model learns it, nothing
   wakes up. Nothing is sent after `session_shutdown`.
+- Compaction with live children: `/compact` runs `session.abort()` first, but pi 1.6 `abort()`
+  only flags an *active* run, so an idle parent never emits `agent_settled` with `aborted` and
+  `stopAll()` is skipped. Verified 2026-11-25 with three background children and two manual
+  `/compact`s: the children kept running, and each result was appended after the compaction
+  entry, so the next turn still saw it. A `/compact` during a live turn does abort it, and a
+  `wait: true` child dies through the tool's abort signal.
+- `/compact` calls `abort()` first, so a live turn emits `agent_settled` aborted just like Escape; `session_before_compact` follows right after. `agent_settled` waits 50 ms and skips `stopAll()` if compaction started (`compacting`); `session_compact` sends a hidden `subagent` note listing running children (`compactNote`), because the summary drops the "started in background" results. Extensions cannot append `customInstructions` (the hook result is only `cancel`/`compaction`). Known gap: `/compact` on a too-small session still aborts a live turn and stops children.
 - Escape: `agent_settled` with `aborted` stops every running child. No idle Escape:
   `onTerminalInput` sees keys before dialogs, so Escape that closes a dialog would stop them.
 - Fork file: `forkFileText` writes a new header (`parentSession` = parent file) and the cut
@@ -72,8 +80,7 @@ inactive. See `README.md` for users.
   `tui.terminal.setProgramStatus({ state: "working", ... })` (OSC 7501) and
   `setProgress(true)` (OSC 9;4) active, and clears them once all children end. Also
   emits `pi.events.emit("subagents:status", { running, total })`.
-- Not done: concurrency limit, timeout on runs, steering a running child, CLI flag
-  passthrough, idle Escape.
+- Not done: concurrency limit, timeout on runs, CLI flag passthrough, idle Escape.
 
 ## Files
 
@@ -81,8 +88,7 @@ inactive. See `README.md` for users.
 - `fork.ts` — `forkBranch`, `forkFileText`, `dropForkDrift` (pure).
 - `child.ts` — `startChild` (spawn, JSONL events), `apply`, `outcome`, `piInvocation`
   (copied from pi's `examples/extensions/subagent`).
-- `ui.ts` — widget lines, `resultView` (tool result and result messages), `Viewer`
-  (`/subagents` overlay).
+- `ui.ts` — widget lines, `statusReport`, `resultView` (tool result and result messages).
 - `prompts.ts` — default guidance, tool description, fork prompt, `/spawn` note.
 - `test.ts` — `node:test`; children are `node -e` scripts that print JSONL like pi.
 

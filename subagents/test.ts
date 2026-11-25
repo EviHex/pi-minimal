@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { apply, outcome, piInvocation, startChild } from "./child.ts";
-import { dropForkDrift, forkBranch, forkFileText, lastAssistantText, restoreRecords, sanitizeSessionText } from "./fork.ts";
-import { childPrompt, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, subagentsCompletions } from "./prompts.ts";
-import { formatContext, headline, resultView, statusReport, transcript, Viewer, widgetLines } from "./ui.ts";
+import { dropForkDrift, forkBranch, forkFileText, inspectSessionFile, restoreRecords, sanitizeSessionText } from "./fork.ts";
+import { childPrompt, compactNote, formatModelShortlist, GUIDANCE, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, subagentsCompletions } from "./prompts.ts";
+import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, resultView, statusReport, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 // Minimal session entries: only the fields the code reads.
 const user = (id: string, ts = 1) => ({ type: "message", id, message: { role: "user", content: "hi", timestamp: ts } });
@@ -72,81 +72,151 @@ test("dropForkDrift keeps a leading system message (the child compacted)", () =>
 	assert.equal(dropForkDrift(m, 10), m);
 });
 
-/** A fake pi: prints JSONL events, like `pi --mode json`, then exits with `code`. */
-function fakePi(events: object[], code = 0, stall = false) {
-	const out = events.map((e) => JSON.stringify(e)).join("\n");
-	const script = `process.stdout.write(${JSON.stringify(out + "\n")}); ${stall ? "setInterval(() => {}, 1000);" : `process.exitCode = ${code};`}`;
+/** A fake pi in RPC mode: reads prompt/steer JSONL on stdin, emits events on stdout, exits on stdin end. */
+function fakeRpc(events: object[], code = 0, stall = false) {
+	const script = `
+		let buf = "";
+		process.stdin.setEncoding("utf8");
+		process.stdin.on("data", (d) => {
+			buf += d;
+			const lines = buf.split("\\n");
+			buf = lines.pop() || "";
+			for (const l of lines) {
+				if (!l.trim()) continue;
+				const cmd = JSON.parse(l);
+				if (cmd.type === "prompt") {
+					for (const e of ${JSON.stringify(events)}) process.stdout.write(JSON.stringify(e) + "\\n");
+					${stall ? "" : 'process.stdout.write(JSON.stringify({ type: "agent_settled" }) + "\\n");'}
+				} else if (cmd.type === "steer") {
+					process.stdout.write(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "steered: " + cmd.message }], stopReason: "stop", timestamp: 2 } }) + "\\n");
+					process.stdout.write(JSON.stringify({ type: "agent_settled" }) + "\\n");
+				}
+			}
+		});
+		process.stdin.on("end", () => { process.exitCode = ${code}; });
+	`;
 	return { command: process.execPath, args: ["-e", script] };
 }
 const cwd = mkdtempSync(join(tmpdir(), "subagents-"));
 const answer = { role: "assistant", content: [{ type: "text", text: "the answer" }], stopReason: "stop", timestamp: 1 };
 
-test("startChild reports the last assistant text and the tools it ran", async () => {
-	const pi = fakePi([
+test("startChild sends initial prompt over RPC stdin, reports output/tools, and exits on agent_settled", async () => {
+	const pi = fakeRpc([
 		{ type: "session", id: "x" },
 		{ type: "tool_execution_start", toolName: "bash" },
 		{ type: "message_end", message: answer },
 	]);
-	const child = await startChild(1, "task", "/f", pi, cwd, {}, () => {}).done;
+	const child = await startChild(1, "task", "/f", pi, cwd, {}, () => {}, { prompt: "go" }).done;
 	assert.equal(child.status, "done");
 	assert.equal(child.output, "the answer");
 	assert.equal(child.tools, 1);
 	assert.equal(child.messages.length, 1);
 });
 
+test("startChild supports steer() while running over RPC", async () => {
+	const child = startChild(1, "task", "/f", fakeRpc([{ type: "message_end", message: answer }], 0, true), cwd, {}, () => {}, { prompt: "go" });
+	child.steer("pivot now");
+	const finished = await child.done;
+	assert.equal(finished.status, "done");
+	assert.equal(finished.output, "steered: pivot now");
+});
+
+test("startChild fails when RPC prompt command returns an error response", async () => {
+	const pi = fakeRpc([{ type: "response", command: "prompt", success: false, error: "bad model" }], 0, true);
+	const child = await startChild(1, "task", "/f", pi, cwd, {}, () => {}, { prompt: "go" }).done;
+	assert.equal(child.status, "failed");
+	assert.equal(child.output, "bad model");
+});
+
 test("startChild marks a model error as failed, with its message", async () => {
 	const error = { role: "assistant", content: [], stopReason: "error", errorMessage: "overloaded", timestamp: 1 };
-	const child = await startChild(1, "task", "/f", fakePi([{ type: "message_end", message: error }]), cwd, {}, () => {}).done;
+	const child = await startChild(1, "task", "/f", fakeRpc([{ type: "message_end", message: error }]), cwd, {}, () => {}, { prompt: "go" }).done;
 	assert.equal(child.status, "failed");
 	assert.equal(child.output, "overloaded");
 });
 
 test("startChild marks a crash as failed", async () => {
-	const child = await startChild(1, "task", "/f", fakePi([], 3), cwd, {}, () => {}).done;
+	const child = await startChild(1, "task", "/f", fakeRpc([], 3), cwd, {}, () => {}, { prompt: "go" }).done;
 	assert.equal(child.status, "failed");
 	assert.match(child.output, /exit code 3/);
 });
 
 test("stop() ends a running child as stopped", async () => {
-	const child = startChild(1, "task", "/f", fakePi([], 0, true), cwd, {}, () => {});
+	const child = startChild(1, "task", "/f", fakeRpc([], 0, true), cwd, {}, () => {}, { prompt: "go" });
 	child.stop();
 	assert.equal((await child.done).status, "stopped");
 });
 
 const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as never;
 
-test("widgetLines renders a Todos-style tree including nested sub-agents, model/thinking, context usage and summary", () => {
-	const kid = { id: 1, label: "sub task", model: "", thinking: "", status: "running", activity: "grep", tools: 2, contextTokens: 20_000, contextWindow: 200_000, summary: "", startedAt: 55_000, children: [] };
-	const running = { id: 2, task: "look\nat it", model: "gw/anthropic/claude-opus-5-5", thinking: "medium", status: "running", activity: "bash", tools: 3, contextTokens: 58_000, contextWindow: 1_000_000, summary: "checking tests", startedAt: 0, children: [kid] } as never;
-	const done = { id: 1, task: "first", model: "", thinking: "", status: "done", contextTokens: 10_000, contextWindow: 200_000, summary: "all good", startedAt: 0, endedAt: 10_000, children: [] } as never;
-	assert.deepEqual(widgetLines([done], plain, 65_000), []);
-	assert.equal(widgetLines([done], plain, 65_000, true).length, 2);
+test("widgetLines renders main agent root, hides id by default, humanizes neutral group nodes, and respects custom fields", () => {
+	const kid = { id: 1, label: "sub task", mode: "fresh", model: "", thinking: "", status: "running", activity: "grep", tools: 2, contextTokens: 20_000, contextWindow: 200_000, cost: 0, summary: "", startedAt: 55_000, children: [] };
+	const running = { id: 2, task: "look\nat it", mode: "fork", group: "prompt-review-v4", model: "gw/anthropic/claude-opus-5-5", thinking: "medium", status: "running", activity: "bash", tools: 3, contextTokens: 58_000, contextWindow: 1_000_000, cost: 0.123, summary: "checking tests", startedAt: 0, children: [kid] } as never;
+	const done = { id: 1, task: "first", mode: "", model: "", thinking: "", status: "done", contextTokens: 10_000, contextWindow: 200_000, cost: 0.05, summary: "all good", startedAt: 0, endedAt: 10_000, children: [] } as never;
+	assert.deepEqual(widgetLines([], plain, 65_000), []);
 	assert.deepEqual(widgetLines([done, running], plain, 65_000), [
-		"● Sub-agents (1/2)",
-		"├─ ✓ #1 first › 10k/200k (5%) › 10s — all good",
-		"└─ ◐ #2 look at it › claude-opus-5-5 › think:med › bash › 3 tools › 58k/1.0M (6%) › 1m05s — checking tests",
-		"   └─ ◐ #2.1 sub task › grep › 2 tools › 20k/200k (10%) › 10s",
+		"● main agent (1/2)",
+		"├─ ✓ first › 10k/200k (5%) › $0.05 › 10s — all good",
+		"└─ ◈ group: prompt review v4 (0/1)",
+		"   └─ ◐ look at it › context:fork › claude-opus-5-5 › think:med › bash › 3 tools › 58k/1.0M (6%) › $0.12 › 1m05s — checking tests",
+		"      └─ ◐ sub task › context:fresh › grep › 2 tools › 20k/200k (10%) › 10s",
 	]);
+	assert.deepEqual(widgetLines([running], plain, 65_000, ["id", "context", "group", "elapsed"]), [
+		"● main agent (0/1)",
+		"└─ ◈ group: prompt review v4 (0/1)",
+		"   └─ ◐ #2 look at it › context:fork › 1m05s",
+		"      └─ ◐ #2.1 sub task › context:fresh › 10s",
+	]);
+	assert.deepEqual(widgetLines([done, running], plain, 65_000, DEFAULT_FIELDS, true), [
+		"● main agent (1/2) › 1 running › 3 tools › $0.17 › 1m05s",
+	]);
+	assert.deepEqual(widgetLines([done, running], plain, 65_000, ["elapsed"], true), [
+		"● main agent (1/2) › 1m05s",
+	]);
+	const tagged = { fg: (c: string, t: string) => `<${c}>${t}</${c}>`, bold: (t: string) => t } as never;
+	const doneLine = widgetLines([done], tagged, 65_000)[1];
+	assert.ok(!/<(syntaxKeyword|syntaxType|syntaxNumber|syntaxString|mdCode|thinkingMedium)>/.test(doneLine), `inactive row should be dimmed: ${doneLine}`);
+	const activeGroupHeader = widgetLines([running], tagged, 65_000)[1];
+	assert.equal(activeGroupHeader, "<borderMuted>└─ </borderMuted><text>◈ group: prompt review v4</text> <muted>(0/1)</muted>");
+	const doneGrouped = { ...(done as object), group: "batch__run" } as never;
+	const doneGroupHeader = widgetLines([doneGrouped], tagged, 65_000)[1];
+	assert.equal(doneGroupHeader, "<borderMuted>└─ </borderMuted><dim>◈ group: batch run (1/1)</dim>");
 	assert.equal(formatContext(0, 200_000), "");
 	assert.equal(formatContext(500, 0), "500");
 	assert.equal(formatContext(58_000, 1_000_000), "58k/1.0M (6%)");
 });
 
-test("Viewer follows the end, scrolls up, and closes on Escape", () => {
-	const text = (t: string) => ({ role: "assistant", content: [{ type: "text", text: t }] });
-	const messages = [{ role: "user" }, ...Array.from({ length: 20 }, (_, i) => text(`line ${i}`))];
-	const child = { id: 1, task: "t", file: "/f", status: "done", messages } as never;
-	let closed = false;
-	const tui = { terminal: { rows: 12 }, requestRender() {} } as never; // body rows: max(5, 12 * 0.8 - 4) = 5
-	const viewer = new Viewer(child, tui, plain, () => (closed = true));
-	const body = () => viewer.render(80).slice(2, -2);
-	assert.deepEqual(body().at(-1), "line 19");
-	viewer.handleInput("\x1b[A"); // up
-	assert.deepEqual(body().at(-1), "line 18");
-	viewer.handleInput("\x1b[F"); // end: follows again
-	assert.deepEqual(body().at(-1), "line 19");
-	viewer.handleInput("\x1b");
-	assert.ok(closed);
+test("parseAllowNested defaults to true and only false disables it", () => {
+	assert.equal(parseAllowNested(undefined), true);
+	assert.equal(parseAllowNested(true), true);
+	assert.equal(parseAllowNested("false"), true);
+	assert.equal(parseAllowNested(false), false);
+});
+
+test("childPrompt includes depth and nesting guidance without touching system prompt", () => {
+	const allowed = childPrompt("find X", "fork", { depth: 1, maxDepth: 3, allowNested: true });
+	assert.match(allowed, /Depth 1\/3\. Own this task/);
+	assert.match(allowed, /never the whole task/);
+	const disabled = childPrompt("find X", "fresh", { depth: 1, maxDepth: 3, allowNested: false });
+	assert.match(disabled, /Depth 1\/3: the `subagent` tool is disabled/);
+	const atLimit = childPrompt("find X", "fork", { depth: 3, maxDepth: 3, allowNested: true });
+	assert.match(atLimit, /tool is disabled here/);
+	assert.match(childPrompt("x"), /never re-spawn yourself/);
+});
+
+test("parseWidgetFields filters unknown entries and writeSubagentSettings preserves unrelated settings", () => {
+	assert.deepEqual(parseWidgetFields(undefined), DEFAULT_FIELDS);
+	assert.ok(!DEFAULT_FIELDS.includes("id" as never));
+	assert.deepEqual(parseWidgetFields(["id", "context", "bogus", "cost", "context"]), ["id", "context", "cost"]);
+	assert.deepEqual(parseWidgetFields([]), []);
+	const dir = mkdtempSync(join(tmpdir(), "subagents-settings-"));
+	const file = join(dir, "settings.json");
+	writeFileSync(file, JSON.stringify({ theme: "dark", "pi-minimal": { polyglot: { default: "zh" }, subagents: { guidance: "hi" } } }));
+	writeSubagentSettings(file, { fields: ["context", "elapsed"] });
+	const saved = JSON.parse(readFileSync(file, "utf8"));
+	assert.equal(saved.theme, "dark");
+	assert.deepEqual(saved["pi-minimal"].polyglot, { default: "zh" });
+	assert.deepEqual(saved["pi-minimal"].subagents, { guidance: "hi", fields: ["context", "elapsed"] });
 });
 
 const exit = (code: number | null, more = {}) => ({ code, signal: code === null ? "SIGKILL" : null, stderr: "", ...more });
@@ -176,20 +246,6 @@ test("piInvocation reruns the script, a compiled binary, or pi from PATH", () =>
 	assert.deepEqual(piInvocation(["-p"], "", "/usr/bin/node"), { command: "pi", args: ["-p"] });
 });
 
-test("transcript shows the task, text, tool calls, the start of tool results, and how it ended", () => {
-	const messages = [
-		{ role: "user", content: "fork prompt" },
-		{ role: "assistant", content: [{ type: "thinking" }, { type: "text", text: " ok " }, { type: "toolCall", name: "bash", arguments: { command: "ls" } }] },
-		{ role: "toolResult", content: [{ type: "text", text: "1\n2\n3\n4" }], isError: false },
-		{ role: "toolResult", content: [], isError: false },
-		{ role: "user", content: [{ type: "text", text: "steer" }] },
-	];
-	const child = { task: "the task", status: "failed", output: "boom", messages } as never;
-	assert.deepEqual(transcript(child, plain), ["▶ the task", "", "ok", '→ bash {"command":"ls"}', "  1", "  2", "  3", "▶ (message)", "failed: boom"]);
-	assert.deepEqual(transcript({ ...(child as object), status: "running", activity: "bash", messages: [] } as never, plain).at(-1), "… bash");
-	assert.deepEqual(transcript({ ...(child as object), status: "done", messages: [] } as never, plain), ["▶ the task", ""]);
-});
-
 test("resultView: headline only, short preview, or all of it when expanded", () => {
 	initTheme(); // keyHint and the Markdown theme read the global theme
 	const lines = (text: string, expanded = false) => resultView(text, expanded, plain).render(80).map((l) => l.trimEnd());
@@ -211,23 +267,26 @@ test("startChild fails when the command cannot start", async () => {
 	assert.match(child.output, /ENOENT/);
 });
 
-test("apply counts tool starts, tracks nested subagent_children snapshots, and keeps the child's messages", () => {
-	const child = { activity: "starting", tools: 0, contextTokens: 0, summary: "", children: [] as object[], messages: [] as object[] } as never as Parameters<typeof apply>[0];
-	assert.equal(apply(child, { type: "tool_execution_start", toolName: "bash" } as never), true);
+test("apply updates activity on message_update, tracks tools/subagent_children, and keeps messages", () => {
+	const child = { activity: "starting", tools: 0, contextTokens: 0, cost: 0, summary: "", children: [] as object[], messages: [] as object[] } as never as Parameters<typeof apply>[0];
+	assert.equal(apply(child, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hi " } } as never), true);
+	assert.equal(child.activity, "writing");
+	assert.equal(apply(child, { type: "tool_execution_start", toolCallId: "t1", toolName: "bash", args: { command: "ls" } } as never), true);
 	assert.deepEqual([child.activity, child.tools], ["bash", 1]);
 	assert.equal(
 		apply(child, {
 			type: "subagent_children",
-			children: [{ id: 1, label: "sub", model: "", thinking: "", status: "running", activity: "read", tools: 0, contextTokens: 0, contextWindow: 0, summary: "", startedAt: 0, children: [] }],
+			children: [{ id: 1, label: "sub", mode: "", model: "", thinking: "", status: "running", activity: "read", tools: 0, contextTokens: 0, contextWindow: 0, cost: 0, summary: "", startedAt: 0, children: [] }],
 		}),
 		true,
 	);
 	assert.equal(child.children.length, 1);
 	assert.equal(apply(child, { type: "message_end", message: { role: "toolResult" } } as never), true);
 	assert.equal(child.activity, "bash");
-	assert.equal(apply(child, { type: "message_end", message: { ...answer, usage: { totalTokens: 42_000 } } } as never), true);
+	assert.equal(apply(child, { type: "message_end", message: { ...answer, usage: { totalTokens: 42_000, cost: { total: 0.08 } } } } as never), true);
 	assert.equal(child.activity, "thinking");
 	assert.equal(child.contextTokens, 42_000);
+	assert.equal(child.cost, 0.08);
 	assert.equal(child.summary, "the answer");
 	assert.equal(apply(child, { type: "message_end", message: { role: "system" } } as never), false);
 	assert.equal(apply(child, { type: "turn_end" } as never), false);
@@ -247,8 +306,8 @@ test("dropForkDrift: a message at forkedAt is the parent's; the patch can follow
 test("widgetLines cuts a long task and counts time from the start", () => {
 	const child = { id: 1, task: "x".repeat(61), status: "running", activity: "a", tools: 0, startedAt: 1000, children: [] } as never;
 	assert.deepEqual(widgetLines([child], plain, 61_000), [
-		"● Sub-agents (0/1)",
-		`└─ ◐ #1 ${"x".repeat(47)}… › a › 0 tools › 1m00s`,
+		"● main agent (0/1)",
+		`└─ ◐ ${"x".repeat(47)}… › a › 0 tools › 1m00s`,
 	]);
 });
 
@@ -269,27 +328,6 @@ test("resultView: the hint only past 3 lines, with the count", () => {
 	assert.equal(lines("h\n\n1\n2\n3\n4", true)[1], "1");
 });
 
-test("Viewer: a short transcript shows from the start; Home, PgDn, PgUp, Down move", () => {
-	const text = (t: string) => ({ role: "assistant", content: [{ type: "text", text: t }] });
-	const many = Array.from({ length: 40 }, (_, i) => text(`line ${i}`));
-	const tui = { terminal: { rows: 20 }, requestRender() {} } as never; // body rows: 20 * 0.8 - 4 = 12
-	const short = new Viewer({ id: 1, task: "t", file: "/f", status: "done", messages: [{ role: "user" }, text("only")] } as never, tui, plain, () => {});
-	assert.deepEqual(short.render(80).slice(2, -2), ["▶ t", "", "only"]);
-	const viewer = new Viewer({ id: 1, task: "t", file: "/f", status: "done", messages: [{ role: "user" }, ...many] } as never, tui, plain, () => {});
-	const body = () => viewer.render(80).slice(2, -2);
-	assert.equal(body().length, 12);
-	viewer.handleInput("\x1b[H"); // home
-	assert.equal(body()[0], "▶ t");
-	viewer.handleInput("\x1b[B"); // down
-	assert.equal(body()[0], "");
-	viewer.handleInput("\x1b[6~"); // page down
-	assert.equal(body()[0], "line 11");
-	viewer.handleInput("\x1b[5~"); // page up
-	assert.equal(body()[0], "");
-	viewer.handleInput("x"); // not a key it uses
-	assert.equal(body()[0], "");
-});
-
 test("piInvocation knows the Windows path of a Bun binary", () => {
 	assert.deepEqual(piInvocation(["-p"], "B:/~BUN/root/pi.exe", "C:/pi.exe"), { command: "C:/pi.exe", args: ["-p"] });
 });
@@ -304,19 +342,7 @@ test("widgetLines prefers label over task and truncates labels past 48 character
 	const child = { id: 1, task: "x".repeat(48), label: "x".repeat(48), status: "running", activity: "a", tools: 0, startedAt: 0, children: [] } as never;
 	assert.ok(widgetLines([child], plain, 0)[1].includes(`${"x".repeat(48)} ›`));
 	const labeled = { id: 2, task: "very long task", label: "short", status: "running", activity: "a", tools: 0, startedAt: 0, children: [] } as never;
-	assert.equal(widgetLines([labeled], plain, 0)[1], "└─ ◐ #2 short › a › 0 tools › 0s");
-});
-
-test("Viewer: scrolling back down to the end follows new lines again", () => {
-	const text = (t: string) => ({ role: "assistant", content: [{ type: "text", text: t }] });
-	const messages = [{ role: "user" }, ...Array.from({ length: 20 }, (_, i) => text(`line ${i}`))];
-	const tui = { terminal: { rows: 12 }, requestRender() {} } as never;
-	const viewer = new Viewer({ id: 1, task: "t", file: "/f", status: "done", messages } as never, tui, plain, () => {});
-	viewer.render(80);
-	viewer.handleInput("\x1b[A"); // up
-	viewer.handleInput("\x1b[B"); // down, back at the end
-	messages.push(text("new"));
-	assert.equal(viewer.render(80).at(-3), "new");
+	assert.equal(widgetLines([labeled], plain, 0)[1], "└─ ◐ short › a › 0 tools › 0s");
 });
 
 test("parseSpawnArgs parses --fresh, --model and --thinking in any order, only as leading flags", () => {
@@ -419,21 +445,21 @@ test("childPrompt supports fork, fresh, and resume modes, and spawnNote reflects
 	assert.match(spawnNote(1, "t", true), /fresh context/);
 });
 
-test("subagentsCompletions completes subcommands and delegates `spawn ...` to spawnCompletions", () => {
+test("subagentsCompletions completes spawn/minimize/settings and delegates `spawn ...` to spawnCompletions", () => {
 	const models = [{ provider: "anthropic", id: "claude-haiku-4-5", name: "Claude Haiku" }];
 	assert.deepEqual(
 		subagentsCompletions("", models)?.map((i) => i.label),
-		["spawn", "stop", "show", "hide"],
+		["spawn", "minimize", "settings"],
 	);
 	assert.deepEqual(
-		subagentsCompletions("sh", models)?.map((i) => i.value),
-		["show"],
+		subagentsCompletions("min", models)?.map((i) => i.value),
+		["minimize"],
 	);
 	assert.deepEqual(
 		subagentsCompletions("spawn --model hai", models)?.map((i) => i.value),
 		["spawn --model anthropic/claude-haiku-4-5 "],
 	);
-	assert.equal(subagentsCompletions("stop ", models), null);
+	assert.equal(subagentsCompletions("minimize ", models), null);
 });
 
 test("statusReport formats running progress (recent calls/text + stats) and finished/stopped results", () => {
@@ -469,16 +495,15 @@ test("statusReport formats running progress (recent calls/text + stats) and fini
 	assert.match(stopRep, /Use resume: 2 to continue\./);
 });
 
-test("lastAssistantText reads the last non-empty assistant text from a saved session JSONL", () => {
+test("inspectSessionFile reads last assistant text, stopReason, and tool call count from a saved session JSONL", () => {
 	const raw = [
 		JSON.stringify({ type: "session", id: "x" }),
-		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "first" }] } }),
-		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "1", name: "read", arguments: {} }] } }),
-		JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "final report" }] } }),
+		JSON.stringify({ type: "message", message: { role: "assistant", stopReason: "toolUse", content: [{ type: "text", text: "first" }, { type: "toolCall", id: "1", name: "read", arguments: {} }] } }),
+		JSON.stringify({ type: "message", message: { role: "assistant", stopReason: "aborted", content: [{ type: "text", text: "final report" }] } }),
 		'{"truncated":',
 	].join("\n");
-	assert.equal(lastAssistantText(raw), "final report");
-	assert.equal(lastAssistantText(""), "");
+	assert.deepEqual(inspectSessionFile(raw), { lastText: "final report", stopReason: "aborted", tools: 1 });
+	assert.deepEqual(inspectSessionFile(""), { lastText: "", stopReason: undefined, tools: 0 });
 });
 
 test("restoreRecords reads persisted sub-agent metadata from custom session entries", () => {
@@ -505,4 +530,31 @@ test("sanitizeSessionText drops truncated tail lines and unfinished tool-call tu
 	assert.equal(clean.length, 2);
 	assert.equal(clean[0].id, "c");
 	assert.equal(clean[1].id, "u1");
+});
+
+test("widgetLines uses a lowercased session name and shows the main agent cost, expanded and minimized", () => {
+	const kid = { id: 1, label: "Audit AUTH", status: "done", tools: 2, cost: 0.1, startedAt: 0, endedAt: 1000, children: [] } as never;
+	const root = { name: "  My Session ", cost: 1.234 };
+	assert.deepEqual(widgetLines([kid], plain, 1000, DEFAULT_FIELDS, false, root), ["● my session (1/1) › $1.23", "└─ ✓ audit auth › $0.10 › 1s"]);
+	assert.equal(widgetLines([kid], plain, 1000, ["elapsed"], false, root)[0], "● my session (1/1)");
+	assert.equal(widgetLines([kid], plain, 1000, DEFAULT_FIELDS, true, root)[0], "● my session (1/1) › 2 tools › $1.33 › 1s");
+	assert.equal(widgetLines([kid], plain, 1000, DEFAULT_FIELDS, false, { name: " ", cost: 0 })[0], "● main agent (1/1)");
+});
+
+test("formatModelShortlist: enabled first, then current provider, then the rest; deduped, capped, stable", () => {
+	const m = (provider: string, id: string) => ({ provider, id });
+	const models = [m("b", "z"), m("a", "y"), m("a", "x"), m("c", "w")];
+	assert.equal(formatModelShortlist([], ["a/x"], "a"), "");
+	assert.equal(formatModelShortlist(models), "a/x, a/y, b/z, c/w");
+	assert.equal(formatModelShortlist(models, ["W", "a/y", "none"], "b"), "c/w, a/y, b/z, a/x");
+	assert.equal(formatModelShortlist(models, ["a/y", "y"], "a", 2), "a/y, a/x");
+});
+
+test("GUIDANCE has the three bullets and the status/steer rule; compactNote lists running sub-agents", () => {
+	assert.equal(GUIDANCE.split("\n").length, 3);
+	assert.match(GUIDANCE, /`subagent_status` or `subagent_steer` only when the user asks/);
+	assert.equal(compactNote([]), "");
+	const note = compactNote([{ id: 2, label: "audit auth", task: "long", group: "review" }, { id: 3, task: "do\nthing" }]);
+	assert.match(note, /still running/);
+	assert.match(note, /\n- #2 \[review\] audit auth\n- #3 do thing$/);
 });

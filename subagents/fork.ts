@@ -62,24 +62,28 @@ export function restoreRecords(branch: SessionEntry[]): SubagentRecord[] {
 	return [...byId.values()].sort((a, b) => a.id - b.id);
 }
 
-/** Read the last assistant text from a saved sub-agent session JSONL (used after /reload or --resume). */
-export function lastAssistantText(text: string): string {
-	let last = "";
+/** Inspect a saved sub-agent session JSONL: last assistant text, stop reason, and tool call count. */
+export function inspectSessionFile(text: string): { lastText: string; stopReason?: string; tools: number } {
+	let lastText = "";
+	let stopReason: string | undefined;
+	let tools = 0;
 	for (const line of text.split("\n")) {
 		if (!line.trim()) continue;
 		try {
 			const entry = JSON.parse(line);
 			if (entry?.type !== "message" || entry.message?.role !== "assistant" || !Array.isArray(entry.message.content)) continue;
+			if (typeof entry.message.stopReason === "string") stopReason = entry.message.stopReason;
+			for (const p of entry.message.content as { type?: string }[]) if (p.type === "toolCall") tools++;
 			const joined = entry.message.content
 				.flatMap((p: { type?: string; text?: string }) => (p.type === "text" && p.text ? [p.text] : []))
 				.join("\n")
 				.trim();
-			if (joined) last = joined;
+			if (joined) lastText = joined;
 		} catch {
 			// skip truncated tail line
 		}
 	}
-	return last;
+	return { lastText, stopReason, tools };
 }
 
 /**

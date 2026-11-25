@@ -1,6 +1,63 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { getMarkdownTheme, keyHint, type Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, Container, Markdown, matchesKey, Text, type TUI, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { type Component, Container, Markdown, Text } from "@earendil-works/pi-tui";
 import type { Child, ChildSnapshot, Status } from "./child.ts";
+
+export const WIDGET_FIELDS = ["id", "context", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed", "group", "summary"] as const;
+export type WidgetField = (typeof WIDGET_FIELDS)[number];
+export const DEFAULT_FIELDS: WidgetField[] = ["context", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed", "summary"];
+
+export const FIELD_META: Record<WidgetField, { label: string; description: string }> = {
+	id: { label: "Sub-agent ID", description: "Show numeric #id prefix on each sub-agent" },
+	context: { label: "Context mode", description: "Show context:fork, context:fresh, or context:resume" },
+	model: { label: "Model", description: "Show short model name (e.g. claude-opus-4-6)" },
+	thinking: { label: "Thinking level", description: "Show thinking level (e.g. think:med)" },
+	activity: { label: "Current activity", description: "Show active tool or phase while running" },
+	tools: { label: "Tool count", description: "Show number of tool calls made" },
+	tokens: { label: "Context usage", description: "Show context window tokens and percentage" },
+	cost: { label: "Session cost", description: "Show cumulative USD cost when reported" },
+	elapsed: { label: "Elapsed time", description: "Show wall-clock duration" },
+	group: { label: "Batch group", description: "Show [group] badge for grouped background runs" },
+	summary: { label: "Last summary", description: "Show latest assistant summary line" },
+};
+
+/** Parse whether nested sub-agents are allowed (defaults to true unless explicitly false). */
+export function parseAllowNested(raw: unknown): boolean {
+	return raw !== false;
+}
+
+/** Parse and validate configured widget fields; falls back to DEFAULT_FIELDS when unset or invalid. */
+export function parseWidgetFields(raw: unknown): WidgetField[] {
+	if (!Array.isArray(raw)) return [...DEFAULT_FIELDS];
+	const valid = new Set<string>(WIDGET_FIELDS);
+	const seen = new Set<WidgetField>();
+	for (const item of raw) {
+		if (typeof item === "string" && valid.has(item)) seen.add(item as WidgetField);
+	}
+	return [...seen];
+}
+
+/** Merge keys into settings.json under "pi-minimal"."subagents" without disturbing unrelated settings. */
+export function writeSubagentSettings(filePath: string, patch: Record<string, unknown>): void {
+	let data: Record<string, unknown> = {};
+	try {
+		const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) data = parsed as Record<string, unknown>;
+	} catch {
+		// start from empty object if file does not exist or is malformed
+	}
+	const pm = data["pi-minimal"] && typeof data["pi-minimal"] === "object" && !Array.isArray(data["pi-minimal"])
+		? { ...(data["pi-minimal"] as Record<string, unknown>) }
+		: {};
+	const cur = pm.subagents && typeof pm.subagents === "object" && !Array.isArray(pm.subagents)
+		? { ...(pm.subagents as Record<string, unknown>) }
+		: {};
+	pm.subagents = { ...cur, ...patch };
+	data["pi-minimal"] = pm;
+	mkdirSync(dirname(filePath), { recursive: true });
+	writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
+}
 
 const oneLine = (text: string, max: number) => {
 	const line = text.replace(/\s+/g, " ").trim();
@@ -22,9 +79,9 @@ export function formatContext(tokens: number, window: number): string {
 function colorContext(tokens: number, window: number, theme: Theme): string {
 	const text = formatContext(tokens, window);
 	if (!text) return "";
-	if (!window) return theme.fg("muted", text);
+	if (!window) return theme.fg("mdCode", text);
 	const ratio = tokens / window;
-	const color = ratio >= 0.85 ? "error" : ratio >= 0.6 ? "warning" : "muted";
+	const color = ratio >= 0.85 ? "error" : ratio >= 0.6 ? "warning" : "mdCode";
 	return theme.fg(color, text);
 }
 
@@ -38,41 +95,122 @@ const STATUS_STYLE: Record<Status, { glyph: string; color: "warning" | "success"
 const shortModel = (model: string) => model.split("/").at(-1) ?? model;
 const shortThinking = (level: string) => (level === "medium" ? "med" : level === "minimal" ? "min" : level);
 
-const colorThinking = (level: string, theme: Theme) =>
-	level ? theme.fg("syntaxType", `think:${shortThinking(level)}`) : "";
+const THINKING_COLOR: Record<string, Parameters<Theme["fg"]>[0]> = {
+	off: "thinkingOff",
+	minimal: "thinkingMinimal",
+	low: "thinkingLow",
+	medium: "thinkingMedium",
+	high: "thinkingHigh",
+	xhigh: "thinkingXhigh",
+	max: "thinkingMax",
+};
 
-function renderNode(node: ChildSnapshot, path: string, prefix: string, isLast: boolean, theme: Theme, now: number, out: string[]) {
+const colorThinking = (level: string, theme: Theme) =>
+	level ? theme.fg(THINKING_COLOR[level] ?? "thinkingMedium", `think:${shortThinking(level)}`) : "";
+
+const FIELD_RENDERERS: Record<Exclude<WidgetField, "id" | "summary">, (node: ChildSnapshot, theme: Theme, now: number, active: boolean) => string> = {
+	context: (n, t, _now, a) => (n.mode ? t.fg(a ? "syntaxOperator" : "dim", `context:${n.mode}`) : ""),
+	group: (n, t, _now, a) => (n.group ? t.fg(a ? "toolTitle" : "dim", `[${n.group}]`) : ""),
+	model: (n, t, _now, a) => (n.model ? t.fg(a ? "syntaxKeyword" : "dim", shortModel(n.model)) : ""),
+	thinking: (n, t, _now, a) => (n.thinking ? (a ? colorThinking(n.thinking, t) : t.fg("dim", `think:${shortThinking(n.thinking)}`)) : ""),
+	activity: (n, t, _now, a) => (a && n.activity ? t.fg("syntaxFunction", n.activity) : ""),
+	tools: (n, t, _now, a) => (a ? t.fg("muted", `${n.tools} tools`) : ""),
+	tokens: (n, t, _now, a) => {
+		const text = formatContext(n.contextTokens ?? 0, n.contextWindow ?? 0);
+		if (!text) return "";
+		return a ? colorContext(n.contextTokens ?? 0, n.contextWindow ?? 0, t) : t.fg("dim", text);
+	},
+	cost: (n, t, _now, a) => (n.cost > 0 ? t.fg(a ? "syntaxString" : "dim", `$${n.cost.toFixed(2)}`) : ""),
+	elapsed: (n, t, now) => t.fg("dim", duration((n.endedAt ?? now) - n.startedAt)),
+};
+
+const META_ORDER: Exclude<WidgetField, "id" | "summary">[] = ["context", "group", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed"];
+
+function renderNode(node: ChildSnapshot, path: string, prefix: string, isLast: boolean, theme: Theme, now: number, show: Set<WidgetField>, out: string[]) {
+	const active = node.status === "running";
 	const sep = theme.fg("dim", " › ");
 	const branch = theme.fg("borderMuted", `${prefix}${isLast ? "└─ " : "├─ "}`);
 	const { glyph, color } = STATUS_STYLE[node.status];
-	const icon = theme.fg(color, glyph);
-	const label = oneLine(node.label, 48);
-	const elapsed = theme.fg("dim", duration((node.endedAt ?? now) - node.startedAt));
-	const model = node.model ? theme.fg("syntaxKeyword", shortModel(node.model)) : "";
-	const think = colorThinking(node.thinking ?? "", theme);
-	const ctx = colorContext(node.contextTokens ?? 0, node.contextWindow ?? 0, theme);
-	const parts =
-		node.status === "running"
-			? [model, think, theme.fg("muted", node.activity), theme.fg("dim", `${node.tools} tools`), ctx, elapsed]
-			: [node.status !== "done" ? theme.fg(color, node.status) : "", model, think, ctx, elapsed];
-	const meta = parts.filter(Boolean).join(sep);
-	const summary = node.summary ? theme.fg("dim", ` — ${oneLine(node.summary, 44)}`) : "";
-	const id = theme.fg(node.status === "running" ? "muted" : "dim", `#${path}`);
-	const name = node.status === "running" ? label : theme.fg("muted", label);
-	out.push(`${branch}${icon} ${id} ${name}${sep}${meta}${summary}`);
+	const label = oneLine(node.label, 48).toLowerCase();
+	const statusTag = !active && node.status !== "done" ? [theme.fg("dim", node.status)] : [];
+	const parts = [...statusTag, ...META_ORDER.filter((f) => show.has(f)).map((f) => FIELD_RENDERERS[f](node, theme, now, active))].filter(Boolean);
+	const meta = parts.join(sep);
+	const summary = show.has("summary") && node.summary ? theme.fg("dim", ` — ${oneLine(node.summary, 44)}`) : "";
+	const icon = theme.fg(active ? color : "dim", glyph);
+	const id = show.has("id") ? `${theme.fg(active ? "muted" : "dim", `#${path}`)} ` : "";
+	const name = active ? label : theme.fg("dim", label);
+	out.push(`${branch}${icon} ${id}${name}${meta ? `${sep}${meta}` : ""}${summary}`);
 	const nextPrefix = `${prefix}${isLast ? "   " : "│  "}`;
-	const kids = node.children ?? [];
-	kids.forEach((kid, idx) => renderNode(kid, `${path}.${kid.id}`, nextPrefix, idx === kids.length - 1, theme, now, out));
+	(node.children ?? []).forEach((kid, idx, kids) => renderNode(kid, `${path}.${kid.id}`, nextPrefix, idx === kids.length - 1, theme, now, show, out));
 }
 
-/** The widget above the editor: a Todos-style tree shown while any sub-agent is running (or when `forceShow` is true). */
-export function widgetLines(children: Child[], theme: Theme, now: number, forceShow = false): string[] {
-	if (!children.length || (!forceShow && !children.some((c) => c.status === "running"))) return [];
+function minimizedSummary(children: Child[], theme: Theme, now: number, show: Set<WidgetField>, rootCost: number): string {
+	const sep = theme.fg("dim", " › ");
+	const running = children.filter((c) => c.status === "running").length;
+	const failed = children.filter((c) => c.status === "failed").length;
+	const totalTools = children.reduce((sum, c) => sum + (c.tools ?? 0), 0);
+	const totalCost = rootCost + children.reduce((sum, c) => sum + (c.cost ?? 0), 0);
+	const maxElapsed = Math.max(0, ...children.map((c) => (c.endedAt ?? now) - c.startedAt));
+	const parts = [
+		show.has("activity") && running > 0 ? theme.fg("warning", `${running} running`) : "",
+		show.has("activity") && failed > 0 ? theme.fg("error", `${failed} failed`) : "",
+		show.has("tools") && totalTools > 0 ? theme.fg("muted", `${totalTools} tools`) : "",
+		show.has("cost") && totalCost > 0 ? theme.fg("syntaxString", `$${totalCost.toFixed(2)}`) : "",
+		show.has("elapsed") ? theme.fg("dim", duration(maxElapsed)) : "",
+	].filter(Boolean);
+	return parts.length ? sep + parts.join(sep) : "";
+}
+
+type TreeEntry = { kind: "node"; node: ChildSnapshot } | { kind: "group"; name: string; members: ChildSnapshot[] };
+
+function groupTreeEntries(nodes: ChildSnapshot[]): TreeEntry[] {
+	const entries: TreeEntry[] = [];
+	const groups = new Map<string, { kind: "group"; name: string; members: ChildSnapshot[] }>();
+	for (const node of nodes) {
+		if (!node.group) {
+			entries.push({ kind: "node", node });
+			continue;
+		}
+		let entry = groups.get(node.group);
+		if (!entry) {
+			entry = { kind: "group", name: node.group, members: [] };
+			groups.set(node.group, entry);
+			entries.push(entry);
+		}
+		entry.members.push(node);
+	}
+	return entries;
+}
+
+const humanizeGroup = (name: string) => name.replace(/[-_]+/g, " ");
+
+function renderGroup(name: string, members: ChildSnapshot[], isLast: boolean, theme: Theme, now: number, show: Set<WidgetField>, out: string[]) {
+	const active = members.some((m) => m.status === "running");
+	const branch = theme.fg("borderMuted", isLast ? "└─ " : "├─ ");
+	const done = members.filter((m) => m.status === "done").length;
+	const title = `◈ group: ${humanizeGroup(name).toLowerCase()}`;
+	const count = `(${done}/${members.length})`;
+	const header = active ? `${theme.fg("text", title)} ${theme.fg("muted", count)}` : theme.fg("dim", `${title} ${count}`);
+	out.push(`${branch}${header}`);
+	const nextPrefix = isLast ? "   " : "│  ";
+	members.forEach((m, idx) => renderNode({ ...m, group: undefined }, `${m.id}`, nextPrefix, idx === members.length - 1, theme, now, show, out));
+}
+
+/** The widget above the editor: a Todos-style tree (or minimized one-line summary) of visible sub-agents. */
+export function widgetLines(children: Child[], theme: Theme, now: number, fields: WidgetField[] = DEFAULT_FIELDS, minimized = false, root?: { name?: string; cost?: number }): string[] {
+	if (!children.length) return [];
+	const show = new Set<WidgetField>(fields);
 	const done = children.filter((c) => c.status === "done").length;
-	const lines = [`${theme.fg("accent", "●")} Sub-agents ${theme.fg("muted", `(${done}/${children.length})`)}`];
+	const rootCost = root?.cost ?? 0;
+	const title = root?.name?.trim() ? oneLine(root.name.trim(), 48).toLowerCase() : "main agent";
+	const cost = !minimized && show.has("cost") && rootCost > 0 ? `${theme.fg("dim", " › ")}${theme.fg("syntaxString", `$${rootCost.toFixed(2)}`)}` : "";
+	const header = `${theme.fg("accent", "●")} ${title} ${theme.fg("muted", `(${done}/${children.length})`)}${cost}`;
+	if (minimized) return [`${header}${minimizedSummary(children, theme, now, show, rootCost)}`];
+	const lines = [header];
 	const nodes: ChildSnapshot[] = children.map((c) => ({
 		id: c.id,
 		label: c.label || c.task,
+		mode: c.mode ?? "",
 		model: c.model ?? "",
 		thinking: c.thinking ?? "",
 		status: c.status,
@@ -80,12 +218,19 @@ export function widgetLines(children: Child[], theme: Theme, now: number, forceS
 		tools: c.tools,
 		contextTokens: c.contextTokens ?? 0,
 		contextWindow: c.contextWindow ?? 0,
+		cost: c.cost ?? 0,
+		group: c.group,
 		summary: c.summary ?? "",
 		startedAt: c.startedAt,
 		endedAt: c.endedAt,
 		children: c.children ?? [],
 	}));
-	nodes.forEach((node, idx) => renderNode(node, `${node.id}`, "", idx === nodes.length - 1, theme, now, lines));
+	const entries = groupTreeEntries(nodes);
+	entries.forEach((entry, idx) => {
+		const isLast = idx === entries.length - 1;
+		if (entry.kind === "group") renderGroup(entry.name, entry.members, isLast, theme, now, show, lines);
+		else renderNode(entry.node, `${entry.node.id}`, "", isLast, theme, now, show, lines);
+	});
 	return lines;
 }
 
@@ -154,95 +299,4 @@ export function resultView(text: string, expanded: boolean, theme: Theme): Compo
 	if (lines.length > 3) preview.push(theme.fg("muted", `… ${lines.length - 3} more lines, ${keyHint("app.tools.expand", "to expand")}`));
 	box.addChild(new Text(preview.join("\n"), 0, 0));
 	return box;
-}
-
-type Message = Child["messages"][number];
-
-type Part = Extract<Message, { role: "assistant" }>["content"][number];
-type ToolResult = Extract<Message, { role: "toolResult" }>;
-
-/** A part of an answer in a viewer: its text, or one line per tool call. */
-function partLines(part: Part, theme: Theme): string[] {
-	if (part.type === "text") return part.text.trim() ? [part.text.trim()] : [];
-	return part.type === "toolCall"
-		? [`${theme.fg("syntaxFunction", `→ ${part.name}`)} ${theme.fg("dim", oneLine(JSON.stringify(part.arguments), 200))}`]
-		: [];
-}
-
-/** A tool result in a viewer: its first 3 lines. */
-function resultLines(result: ToolResult, theme: Theme): string[] {
-	const text = result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n").trim();
-	return text ? text.split("\n").slice(0, 3).map((line) => theme.fg(result.isError ? "error" : "dim", `  ${oneLine(line, 200)}`)) : [];
-}
-
-function messageLines(message: Message, theme: Theme): string[] {
-	if (message.role === "user") return [theme.fg("accent", `▶ ${typeof message.content === "string" ? message.content : "(message)"}`)];
-	if (message.role === "assistant") return message.content.flatMap((part) => partLines(part, theme));
-	return message.role === "toolResult" ? resultLines(message, theme) : [];
-}
-
-/** What a viewer shows of a child: its task (not the fork prompt around it), its messages, how it ended. */
-export function transcript(child: Child, theme: Theme): string[] {
-	const end = {
-		running: theme.fg("dim", `… ${child.activity}`),
-		done: [],
-		failed: theme.fg("error", `failed: ${child.output}`),
-		stopped: theme.fg("warning", "stopped"),
-	}[child.status];
-	return [theme.fg("accent", `▶ ${child.task}`), "", ...child.messages.slice(1).flatMap((m) => messageLines(m, theme)), end].flat();
-}
-
-/** A scrollable, live view of one child. It follows the end until the user scrolls up. */
-export class Viewer implements Component {
-	private top: number | undefined; // undefined: follow the end
-	private max = 0;
-	private height = 10;
-	private child: Child;
-	private tui: TUI;
-	private theme: Theme;
-	private close: () => void;
-
-	constructor(child: Child, tui: TUI, theme: Theme, close: () => void) {
-		this.child = child;
-		this.tui = tui;
-		this.theme = theme;
-		this.close = close;
-	}
-
-	render(width: number): string[] {
-		const { child, theme } = this;
-		this.height = Math.max(5, Math.floor(this.tui.terminal.rows * 0.8) - 4);
-		const body = transcript(child, theme).flatMap((line) => wrapTextWithAnsi(line, width));
-		this.max = Math.max(0, body.length - this.height);
-		const top = Math.min(this.top ?? this.max, this.max);
-		const { glyph, color } = STATUS_STYLE[child.status];
-		const sep = theme.fg("dim", " · ");
-		const modelStr = child.model ? theme.fg("syntaxType", `${child.model}${child.thinking ? ` (${child.thinking})` : ""}`) : "";
-		const ctx = colorContext(child.contextTokens ?? 0, child.contextWindow ?? 0, theme);
-		const meta = [modelStr, ctx, theme.fg("dim", `pi --session ${child.file}`)].filter(Boolean).join(sep);
-		const head = `${theme.fg(color, `${glyph} #${child.id} ${child.status}`)}${sep}${meta}`;
-		const rule = theme.fg("borderMuted", "─".repeat(Math.max(1, width)));
-		const foot = theme.fg("muted", "↑↓ PgUp PgDn Home End · Esc/q closes");
-		return [head, rule, ...body.slice(top, top + this.height), rule, foot].map((line) => truncateToWidth(line, width));
-	}
-
-	handleInput(data: string): void {
-		const top = this.top ?? this.max;
-		const moves: [string, number][] = [
-			["up", top - 1],
-			["down", top + 1],
-			["pageUp", top - this.height],
-			["pageDown", top + this.height],
-			["home", 0],
-			["end", this.max],
-		];
-		if (matchesKey(data, "escape") || data === "q") return this.close();
-		const move = moves.find(([key]) => matchesKey(data, key as never));
-		if (!move) return;
-		const next = Math.max(0, Math.min(move[1], this.max));
-		this.top = next >= this.max ? undefined : next;
-		this.tui.requestRender();
-	}
-
-	invalidate(): void {}
 }
