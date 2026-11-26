@@ -174,13 +174,13 @@ const isAssistant = (message: Message | undefined): message is Assistant => mess
 const modelError = (last?: Assistant) => (last?.stopReason === "error" ? (last.errorMessage ?? "model error") : undefined);
 const textOf = (last: Assistant) => last.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n").trim();
 
-/** How a child ended: a stop keeps any last text; a crash, RPC or model error fails it; else done with its last text. */
+/** How a child ended: a stop keeps any last text; a crash, RPC or model error fails it, with the error and any last text; else done with its last text. */
 export function outcome(messages: Message[], exit: Exit, stopping: boolean, rpcError?: string): Pick<Child, "status" | "output"> {
 	const last = messages.findLast(isAssistant);
 	const text = last ? textOf(last) : "";
 	if (stopping) return { status: "stopped", output: text };
 	const failure = exitFailure(exit) ?? rpcError ?? modelError(last);
-	if (failure) return { status: "failed", output: failure };
+	if (failure) return { status: "failed", output: text ? `${failure}\n\nLast text before it failed:\n${text}` : failure };
 	return { status: "done", output: text };
 }
 

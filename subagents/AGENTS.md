@@ -124,6 +124,9 @@ inactive. See `README.md` for users.
   before a finished child's output, once, in the per-result text (tool result and result
   message), never in the system prompt. No output, no label. The label is a note, not a
   guarantee: a model can still follow an injected instruction.
+- Partial work: before, a stopped child gave its last text but a failed one only the error
+  (`outcome`). A failed one now adds `Last text before it failed:` and that text, with no cap
+  (the normal report has none either).
 - Terminal status: while background children run and the main agent is idle,
   `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps OSC 7501 and OSC 9;4
   active, and clears them when all end. It also emits `pi.events.emit("subagents:status",
