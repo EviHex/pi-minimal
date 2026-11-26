@@ -115,6 +115,8 @@ count, context window usage, elapsed time, and latest summary line.
   to them: ask the agent to stop one (it calls `subagent_stop`).
 - A sub-agent of a sub-agent always runs in the foreground (a sub-agent ends when its
   own run ends). Sub-agents nest 3 levels deep at most.
+- One sub-agent writes a session file at a time: `resume` of a sub-agent whose session is still in use
+  by a running one (the same one, or an earlier resume of it) fails with an error that names the running #id.
 - Sub-agents stop when their pi closes (quit, crash, `/new`, switching session). When you
   open that session again, the agent gets one message, without a new turn, that lists the
   ones that were still running and says no report will arrive. It can read where each

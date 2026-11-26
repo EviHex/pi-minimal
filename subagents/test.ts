@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import { apply, outcome, piInvocation, startChild } from "./child.ts";
+import { apply, liveOnFile, outcome, piInvocation, startChild } from "./child.ts";
 import { dropForkDrift, endedStates, forkBranch, forkFileText, inspectSessionFile, interruptedRecords, restoreRecords, sanitizeSessionText } from "./fork.ts";
 import { childPrompt, compactNote, formatModelShortlist, interruptedNote, GUIDELINE_VALUES, parseGuidelines, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, STATUS_TOOL_DESCRIPTION, STEER_TOOL_DESCRIPTION, STOP_TOOL_DESCRIPTION, subagentsCompletions, subagentsSection } from "./prompts.ts";
 import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, priorReport, resultView, statusReport, stopReply, widgetLines, writeSubagentSettings } from "./ui.ts";
@@ -686,4 +686,12 @@ test("interruptedNote lists the sub-agents that stopped when the session closed,
 	assert.match(note, /no report will arrive/);
 	assert.match(note, /\n- #3 audit auth\n- #4 do thing\n/);
 	assert.match(note, /`subagent_status`.*`resume`/);
+});
+
+test("liveOnFile finds the running sub-agent that uses a session file", () => {
+	const kids = [{ id: 1, file: "/s/a", status: "done" }, { id: 2, file: "/s/b", status: "running" }, { id: 3, file: "/s/a", status: "running" }] as never[];
+	assert.equal(liveOnFile(kids, "/s/a")?.id, 3);
+	assert.equal(liveOnFile(kids, "/s/b")?.id, 2);
+	assert.equal(liveOnFile(kids, "/s/c"), undefined);
+	assert.equal(liveOnFile([kids[0]], "/s/a"), undefined);
 });

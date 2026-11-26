@@ -98,6 +98,9 @@ export const snapshot = (
 	children: child.children,
 });
 
+/** The running child that writes this session file. A resume gets a new id but reuses the file of the child it continues. */
+export const liveOnFile = (children: Pick<Child, "id" | "file" | "status">[], file: string) => children.find((c) => c.file === file && c.status === "running");
+
 export interface Invocation {
 	command: string;
 	args: string[];

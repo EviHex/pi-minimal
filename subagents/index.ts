@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DynamicBorder, type ExtensionAPI, type ExtensionContext, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, SettingsList, Text, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { type Child, piInvocation, snapshot, startChild } from "./child.ts";
+import { type Child, liveOnFile, piInvocation, snapshot, startChild } from "./child.ts";
 import { dropForkDrift, endedStates, forkFileText, inspectSessionFile, interruptedRecords, restoreRecords, sanitizeSessionText, type SubagentRecord } from "./fork.ts";
 import {
 	type ChildMode,
@@ -136,10 +136,10 @@ export default function (pi: ExtensionAPI) {
 	): Child {
 		if (DEPTH > 0 && !allowNested) throw new Error("Nested sub-agents are disabled in settings.");
 		if (DEPTH >= MAX_DEPTH) throw new Error(`Sub-agents nest at most ${MAX_DEPTH} levels deep: this one cannot start another.`);
-		const livePrev = opts.resume !== undefined ? children.find((c) => c.id === opts.resume) : undefined;
-		const prev = livePrev ?? (opts.resume !== undefined ? history.get(opts.resume) : undefined);
+		const prev = opts.resume !== undefined ? (children.find((c) => c.id === opts.resume) ?? history.get(opts.resume)) : undefined;
 		if (opts.resume !== undefined && !prev) throw new Error(`Sub-agent #${opts.resume} not found in this session.`);
-		if (livePrev?.status === "running") throw new Error(`Sub-agent #${livePrev.id} is still running.`);
+		const busy = prev && liveOnFile(children, prev.file);
+		if (busy) throw new Error(`Sub-agent #${busy.id} is still running on that session: wait for it or stop it first.`);
 		if (prev && !existsSync(prev.file)) throw new Error(`Session file for sub-agent #${prev.id} no longer exists: ${prev.file}`);
 		const mode: ChildMode = prev ? "resume" : opts.fresh ? "fresh" : "fork";
 		const model = resolveModel(opts.model ?? (prev?.model || undefined), ctx.model, availableModels(ctx));
