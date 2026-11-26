@@ -68,12 +68,24 @@ export function formatModelShortlist(models: ModelRef[], enabledModels: string[]
 	return [...new Set(ordered.map(full))].slice(0, max).join(", ");
 }
 
+type NoteChild = { id: number; label?: string; task: string; group?: string };
+/** A note: `head`, one line per child, then `tail`. Empty when no child is listed. */
+const note = (children: NoteChild[], head: string, tail = "") =>
+	children.length
+		? [head, ...children.map((c) => `- #${c.id}${c.group ? ` [${c.group}]` : ""} ${(c.label || c.task).replace(/\s+/g, " ").trim().slice(0, 100)}`), tail].filter(Boolean).join("\n")
+		: "";
+
 /** Reminder sent after `/compact`, which summarizes away the "started in the background" tool results. */
-export function compactNote(running: { id: number; label?: string; task: string; group?: string }[]): string {
-	if (!running.length) return "";
-	const line = (c: (typeof running)[number]) => `- #${c.id}${c.group ? ` [${c.group}]` : ""} ${(c.label || c.task).replace(/\s+/g, " ").trim().slice(0, 100)}`;
-	return `Context was compacted. These background sub-agents are still running; each result still arrives as a message when it ends:\n${running.map(line).join("\n")}`;
-}
+export const compactNote = (running: NoteChild[]) =>
+	note(running, "Context was compacted. These background sub-agents are still running; each result still arrives as a message when it ends:");
+
+/** Sent once when a session opens and its sub-agents ended with it: the agent must not wait for their reports. */
+export const interruptedNote = (interrupted: NoteChild[]) =>
+	note(
+		interrupted,
+		"This session closed while these sub-agents ran, so they stopped and no report will arrive:",
+		"Use `subagent_status` to see where each stopped, or `subagent` with `resume` to continue.",
+	);
 
 export const STATUS_TOOL_DESCRIPTION = `Non-blocking snapshot of a sub-agent by its #id: shows current activity, recent tool calls/text, context usage, or the final result if finished. Use only when the user asks.`;
 

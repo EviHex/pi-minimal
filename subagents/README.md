@@ -115,6 +115,11 @@ count, context window usage, elapsed time, and latest summary line.
   to them: ask the agent to stop one (it calls `subagent_stop`).
 - A sub-agent of a sub-agent always runs in the foreground (a sub-agent ends when its
   own run ends). Sub-agents nest 3 levels deep at most.
+- Sub-agents stop when their pi closes (quit, crash, `/new`, switching session). When you
+  open that session again, the agent gets one message, without a new turn, that lists the
+  ones that were still running and says no report will arrive. It can read where each
+  stopped with `subagent_status` or continue it with `resume`. A `/reload` is not a close:
+  background sub-agents keep running.
 - When a sub-agent's extension would change the prompt (for example plan mode, which
   each pi keeps in memory), the sub-agent keeps yours.
 - While background sub-agents run and the main agent is idle, the extension keeps

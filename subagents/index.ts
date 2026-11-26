@@ -6,7 +6,7 @@ import { DynamicBorder, type ExtensionAPI, type ExtensionContext, getAgentDir, g
 import { Container, SettingsList, Text, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type Child, piInvocation, snapshot, startChild } from "./child.ts";
-import { dropForkDrift, forkFileText, inspectSessionFile, restoreRecords, sanitizeSessionText, type SubagentRecord } from "./fork.ts";
+import { dropForkDrift, endedStates, forkFileText, inspectSessionFile, interruptedRecords, restoreRecords, sanitizeSessionText, type SubagentRecord } from "./fork.ts";
 import {
 	type ChildMode,
 	childPrompt,
@@ -14,6 +14,7 @@ import {
 	formatModelShortlist,
 	GUIDELINE_VALUES,
 	type Guidelines,
+	interruptedNote,
 	parseGuidelines,
 	parseSpawnArgs,
 	resolveModel,
@@ -27,7 +28,7 @@ import {
 	THINKING_LEVELS,
 	TOOL_DESCRIPTION,
 } from "./prompts.ts";
-import { DEFAULT_FIELDS, FIELD_META, parseWidgetFields, resultView, statusReport, stopReply, WIDGET_FIELDS, type WidgetField, widgetLines, writeSubagentSettings } from "./ui.ts";
+import { DEFAULT_FIELDS, FIELD_META, parseWidgetFields, priorReport, resultView, statusReport, stopReply, WIDGET_FIELDS, type WidgetField, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 /** How deep this pi is: 0 for the user's, 1 for a sub-agent, 2 for its sub-agent... */
 const DEPTH = Number(process.env.PI_MINIMAL_SUBAGENT_DEPTH) || 0;
@@ -54,6 +55,7 @@ export default function (pi: ExtensionAPI) {
 	const children: Child[] = [];
 	const dismissed = new Set<number>(); // finished children cleared from the widget on the user's next prompt
 	const history = new Map<number, SubagentRecord>();
+	let ended = new Map<number, string>(); // how each recorded sub-agent ended; no entry means it was running when the session closed
 	let nextId = 1;
 	let session: ExtensionContext | undefined; // for the widget, which changes outside handlers
 	let currentSessionFile: string | undefined;
@@ -184,11 +186,19 @@ export default function (pi: ExtensionAPI) {
 		return child;
 	}
 
+	/** Remember in the session that a sub-agent ended, so the next session start does not call it interrupted. */
+	const markEnded = (id: number, state: string) => {
+		if (DEPTH > 0 || closing) return;
+		ended.set(id, state);
+		pi.appendEntry("subagents", { id, ended: state });
+	};
+
 	/** Send the result of a background child when it ends. Stopped children and non-final members of a running group do not wake the agent. */
 	const deliverLater = (child: Child) => {
 		child.background = true;
 		void child.done.then(() => {
 			if (closing) return;
+			markEnded(child.id, child.status);
 			const waitForGroup = Boolean(child.group && children.some((c) => c.group === child.group && c.status === "running"));
 			const content = statusReport(child);
 			pi.sendMessage({ customType: "subagent", content, display: true }, { triggerTurn: child.status !== "stopped" && !waitForGroup });
@@ -235,6 +245,7 @@ export default function (pi: ExtensionAPI) {
 			signal?.addEventListener("abort", child.stop, { once: true });
 			await child.done;
 			signal?.removeEventListener("abort", child.stop);
+			markEnded(child.id, child.status);
 			if (child.status !== "done") throw new Error(statusReport(child));
 			return { content: [{ type: "text", text: statusReport(child) }], details: {} };
 		},
@@ -275,12 +286,8 @@ export default function (pi: ExtensionAPI) {
 			if (child) return { content: [{ type: "text", text: statusReport(child) }], details: {} };
 			const prior = history.get(params.id);
 			if (prior) {
-				const spec = [prior.model, prior.thinking].filter(Boolean).join(", ");
 				const info = existsSync(prior.file) ? inspectSessionFile(readFileSync(prior.file, "utf8")) : { lastText: "", tools: 0 };
-				const state = info.stopReason ? `${info.stopReason} before reload` : "from before reload";
-				const head = `Sub-agent #${prior.id}${prior.label && prior.label !== prior.task ? ` [${oneLine(prior.label)}]` : ""}${spec ? ` (${spec})` : ""} (${state}, ${info.tools} tools).`;
-				const meta = `Session: ${prior.file} · Use resume: ${prior.id} to continue.`;
-				return { content: [{ type: "text", text: [head, info.lastText, meta].filter(Boolean).join("\n\n") }], details: {} };
+				return { content: [{ type: "text", text: priorReport(prior, info, ended.get(prior.id)) }], details: {} };
 			}
 			throw new Error(`Sub-agent #${params.id} not found in this session.`);
 		},
@@ -489,7 +496,15 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 			history.clear();
-			for (const rec of restoreRecords(ctx.sessionManager.getBranch())) history.set(rec.id, rec);
+			const branch = ctx.sessionManager.getBranch();
+			for (const rec of restoreRecords(branch)) history.set(rec.id, rec);
+			ended = endedStates(branch);
+			// Children that ran when this session closed are gone: say so once, so the agent does not wait for their reports.
+			const lost = interruptedRecords(branch, new Set(children.map((c) => c.id)), (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined));
+			if (lost.length) {
+				pi.sendMessage({ customType: "subagent", content: interruptedNote(lost), display: true }, { triggerTurn: false });
+				for (const rec of lost) markEnded(rec.id, "interrupted");
+			}
 			const maxId = Math.max(0, ...children.map((c) => c.id), ...history.keys());
 			nextId = maxId + 1;
 			if (children.length) refresh();

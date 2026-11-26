@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { apply, outcome, piInvocation, startChild } from "./child.ts";
-import { dropForkDrift, forkBranch, forkFileText, inspectSessionFile, restoreRecords, sanitizeSessionText } from "./fork.ts";
-import { childPrompt, compactNote, formatModelShortlist, GUIDELINE_VALUES, parseGuidelines, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, STATUS_TOOL_DESCRIPTION, STEER_TOOL_DESCRIPTION, STOP_TOOL_DESCRIPTION, subagentsCompletions, subagentsSection } from "./prompts.ts";
-import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, resultView, statusReport, stopReply, widgetLines, writeSubagentSettings } from "./ui.ts";
+import { dropForkDrift, endedStates, forkBranch, forkFileText, inspectSessionFile, interruptedRecords, restoreRecords, sanitizeSessionText } from "./fork.ts";
+import { childPrompt, compactNote, formatModelShortlist, interruptedNote, GUIDELINE_VALUES, parseGuidelines, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, STATUS_TOOL_DESCRIPTION, STEER_TOOL_DESCRIPTION, STOP_TOOL_DESCRIPTION, subagentsCompletions, subagentsSection } from "./prompts.ts";
+import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, priorReport, resultView, statusReport, stopReply, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 // Minimal session entries: only the fields the code reads.
 const user = (id: string, ts = 1) => ({ type: "message", id, message: { role: "user", content: "hi", timestamp: ts } });
@@ -624,4 +624,66 @@ test("stopReply says stopping or already ended, with session and resume hint", (
 	const c = { id: 3, file: "/s/3.jsonl", status: "running" } as never;
 	assert.equal(stopReply(c), "Stopping sub-agent #3; it will not wake you. Session: /s/3.jsonl · Use resume: 3 to continue.");
 	assert.match(stopReply({ id: 3, file: "/s/3.jsonl", status: "done" } as never), /^Already done: sub-agent #3\. Session: \/s\/3\.jsonl/);
+});
+
+const sub = (data: object) => ({ type: "custom", customType: "subagents", data });
+const rec = (id: number, file = `/s/${id}.jsonl`) => sub({ id, file, task: `t${id}`, label: `L${id}`, model: "a/b", thinking: "low" });
+const sessionText = (...messages: object[]) => [{ type: "session", id: "x" }, ...messages.map((message) => ({ type: "message", message }))].map((l) => JSON.stringify(l)).join("\n");
+const finished = sessionText({ role: "user", content: "go" }, { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "done" }] });
+const midRun = sessionText({ role: "user", content: "go" }, { role: "assistant", stopReason: "toolUse", content: [] });
+
+test("endedStates reads end entries; restoreRecords ignores them", () => {
+	const entries = [rec(1), rec(2), sub({ id: 1, ended: "done" }), sub({ id: 2, ended: "stopped" }), sub({ id: 2, ended: "interrupted" }), sub({ id: 3 })] as never[];
+	assert.deepEqual([...endedStates(entries)], [[1, "done"], [2, "interrupted"]]);
+	assert.deepEqual(restoreRecords(entries).map((r) => r.id), [1, 2]);
+});
+
+test("endedStates ignores other entries and malformed end entries", () => {
+	const entries = [
+		{ type: "custom", customType: "other", data: { id: 1, ended: "done" } },
+		{ type: "message", customType: "subagents", data: { id: 2, ended: "done" } },
+		{ type: "custom", customType: "subagents", data: { id: "3", ended: "done" } },
+		{ type: "custom", customType: "subagents", data: { id: 4, ended: true } },
+		{ type: "custom", customType: "subagents" },
+	] as never[];
+	assert.equal(endedStates(entries).size, 0);
+});
+
+test("interruptedRecords: an unreadable last line or a last message that is not a final answer is interrupted", () => {
+	const lastLines = ['{"truncated":', "null", JSON.stringify({ type: "message", message: { role: "user", content: "go" } }), JSON.stringify({ type: "message", message: { role: "assistant", stopReason: "length" } })];
+	for (const last of lastLines) assert.equal(interruptedRecords([rec(1)] as never[], new Set(), () => `${finished}\n${last}`).length, 1, last);
+	assert.equal(interruptedRecords([rec(1)] as never[], new Set(), () => `${finished}\n`).length, 0);
+});
+
+test("interruptedRecords: no end entry, no live child, and no clean finish in its file", () => {
+	const files: Record<string, string | undefined> = { "/s/1.jsonl": midRun, "/s/2.jsonl": midRun, "/s/3.jsonl": finished, "/s/4.jsonl": undefined, "/s/5.jsonl": midRun, "/s/6.jsonl": midRun };
+	const entries = [1, 2, 3, 4, 5, 6].map((id) => rec(id)).concat([sub({ id: 2, ended: "done" })] as never[]) as never[];
+	const found = interruptedRecords(entries, new Set([5]), (file) => files[file]).map((r) => r.id);
+	assert.deepEqual(found, [1, 6]); // 2 has an end entry, 3 finished, 4 has no file, 5 is live
+});
+
+test("interruptedRecords: an end entry from interrupted is not reported again", () => {
+	const entries = [rec(1), sub({ id: 1, ended: "interrupted" })] as never[];
+	assert.deepEqual(interruptedRecords(entries, new Set(), () => midRun), []);
+});
+
+test("priorReport says how a sub-agent from an earlier run ended", () => {
+	const prior = { id: 3, file: "/s/3.jsonl", task: "t", label: "L3", model: "a/b", thinking: "low" };
+	const info = { lastText: "partial work", stopReason: "toolUse", tools: 2 };
+	const interrupted = priorReport(prior, info, "interrupted");
+	assert.match(interrupted, /Sub-agent #3 \[L3\] \(a\/b, low\) \(interrupted: pi closed before it finished, 2 tools\)\./);
+	assert.match(interrupted, /partial work/);
+	assert.match(interrupted, /Use resume: 3 to continue\./);
+	assert.match(priorReport(prior, info, "stopped"), /\(stopped, 2 tools\)/);
+	assert.match(priorReport(prior, { ...info, stopReason: "stop" }, undefined), /\(done, 2 tools\)/);
+	assert.match(priorReport(prior, { ...info, stopReason: undefined }, undefined), /\(ended earlier, 2 tools\)/);
+});
+
+test("interruptedNote lists the sub-agents that stopped when the session closed, and what to do", () => {
+	assert.equal(interruptedNote([]), "");
+	const note = interruptedNote([{ id: 3, label: "audit auth", task: "long" }, { id: 4, label: "do thing", task: "do thing" }]);
+	assert.match(note, /closed while these sub-agents ran/);
+	assert.match(note, /no report will arrive/);
+	assert.match(note, /\n- #3 audit auth\n- #4 do thing\n/);
+	assert.match(note, /`subagent_status`.*`resume`/);
 });

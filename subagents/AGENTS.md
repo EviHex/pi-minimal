@@ -105,6 +105,19 @@ inactive. See `README.md` for users.
   `customType: "subagents"` entry (`pi.appendEntry`) with `{ id, file, task, label,
   model, thinking }`; `session_start` restores them (`restoreRecords`) so `#id` stays
   monotonic and `resume` keeps working.
+- Interrupted children: pi stops its children when it closes, so nobody tells the agent on
+  `/resume`. At depth 0, each end writes `pi.appendEntry("subagents", { id, ended: status })`:
+  in `deliverLater`'s handler (which skips after `closing`, so a close leaves no entry) and
+  after the foreground `await child.done`; not in `launch`, because children adopted after
+  `/reload` end in the new instance. At `session_start`, after the `/reload` adoption, a
+  record with no end entry, no live child and a session file that does not end with an
+  assistant message with `stopReason: "stop"` (that rule, and a missing file, spare sessions
+  made before end entries existed) is interrupted: one `sendMessage` (`display: true`,
+  `triggerTurn: false`; run in a real pi in rpc mode: the message and the end entry are
+  written at `session_start`, once; the tui order was only read in the source) and an
+  `interrupted` end entry, so it is said once.
+  `subagent_status` reads the same entries (`priorReport`). Known gap: a child that ended
+  during the `/reload` gap is adopted with its result undelivered (as before).
 - Terminal status: while background children run and the main agent is idle,
   `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps OSC 7501 and OSC 9;4
   active, and clears them when all end. It also emits `pi.events.emit("subagents:status",

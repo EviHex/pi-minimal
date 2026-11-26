@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { getMarkdownTheme, keyHint, type Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Container, Markdown, Text } from "@earendil-works/pi-tui";
 import type { Child, ChildSnapshot, Status } from "./child.ts";
+import type { SubagentRecord } from "./fork.ts";
 
 export const WIDGET_FIELDS = ["id", "context", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed", "group", "summary"] as const;
 export type WidgetField = (typeof WIDGET_FIELDS)[number];
@@ -306,4 +307,13 @@ export function resultView(text: string, expanded: boolean, theme: Theme): Compo
 export function stopReply(child: Child): string {
 	const state = child.status === "running" ? "Stopping" : `Already ${child.status}:`;
 	return `${state} sub-agent #${child.id}${child.status === "running" ? "; it will not wake you" : ""}. Session: ${child.file} · Use resume: ${child.id} to continue.`;
+}
+
+/** `subagent_status` for a sub-agent of an earlier run (before `/reload`, or before pi closed): its saved session, not a live child. */
+export function priorReport(prior: SubagentRecord, info: { lastText: string; stopReason?: string; tools: number }, ended: string | undefined): string {
+	const spec = [prior.model, prior.thinking].filter(Boolean).join(", ");
+	const state = ended === "interrupted" ? "interrupted: pi closed before it finished" : (ended ?? (info.stopReason === "stop" ? "done" : "ended earlier"));
+	const head = `Sub-agent #${prior.id}${prior.label && prior.label !== prior.task ? ` [${oneLine(prior.label, 100)}]` : ""}${spec ? ` (${spec})` : ""} (${state}, ${info.tools} tools).`;
+	const meta = `Session: ${prior.file} · Use resume: ${prior.id} to continue.`;
+	return [head, info.lastText, meta].filter(Boolean).join("\n\n");
 }

@@ -62,6 +62,42 @@ export function restoreRecords(branch: SessionEntry[]): SubagentRecord[] {
 	return [...byId.values()].sort((a, b) => a.id - b.id);
 }
 
+/** How each sub-agent ended, from the end entries `{ id, ended }` in the branch (the last one wins). */
+export function endedStates(branch: SessionEntry[]): Map<number, string> {
+	const ended = new Map<number, string>();
+	for (const entry of branch) {
+		if (entry.type !== "custom" || entry.customType !== "subagents") continue;
+		const d = entry.data as { id?: unknown; ended?: unknown } | undefined;
+		if (typeof d?.id === "number" && typeof d.ended === "string") ended.set(d.id, d.ended);
+	}
+	return ended;
+}
+
+/** True when the last entry of a saved session is an assistant message that stopped on its own: the child finished. */
+function finishedCleanly(text: string): boolean {
+	const last = text.trimEnd().split("\n").at(-1) ?? "";
+	try {
+		const message = JSON.parse(last)?.message;
+		return message?.role === "assistant" && message.stopReason === "stop";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Sub-agents that were running when their parent session closed: no end entry, not live now (`live` holds
+ * the ids of children adopted after `/reload`). Sessions saved before end entries existed get no false
+ * alarm: a missing session file, or one that ends with a finished answer, counts as ended.
+ */
+export function interruptedRecords(branch: SessionEntry[], live: Set<number>, readFile: (file: string) => string | undefined): SubagentRecord[] {
+	const ended = endedStates(branch);
+	return restoreRecords(branch).filter((rec) => {
+		if (ended.has(rec.id) || live.has(rec.id)) return false;
+		const text = readFile(rec.file);
+		return text !== undefined && !finishedCleanly(text);
+	});
+}
+
 /** Inspect a saved sub-agent session JSONL: last assistant text, stop reason, and tool call count. */
 export function inspectSessionFile(text: string): { lastText: string; stopReason?: string; tools: number } {
 	let lastText = "";
