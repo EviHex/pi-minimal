@@ -28,7 +28,7 @@ sub-agent:   [system prompt + tools][conversation ...............][task]
   (alias: `/sa spawn ...`) to start one in the background yourself (with Tab completion
   for subcommands, flags, models and thinking levels). The main agent is told what you
   asked; the result wakes it up when it arrives.
-- Sub-agents can start their own sub-agents.
+- Sub-agents can start their own sub-agents (`allowNested`).
 - `/compact` keeps background sub-agents running; afterwards the agent gets a short note listing them, and their results still wake it up.
 - Escape stops the main agent and every sub-agent. No result wakes the agent up after
   that.
@@ -48,24 +48,38 @@ Remove other sub-agent extensions first: two tools named `subagent` conflict.
 
 Put settings in `~/.pi/agent/settings.json` (global) or `.pi/settings.json`
 (project), under `"pi-minimal"."subagents"`. Merge the keys; do not overwrite the
-file. Settings are read at session start (use `/reload`).
+file. Settings are read at session start: change them, then `/reload`.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `guidance` | string | see below | The `subagents` section of the system prompt: when and how much the agent uses sub-agents. `""` removes the section. |
-| `fields` | string[] | `["context", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed", "summary"]` | Widget columns to display. Valid values: `context`, `model`, `thinking`, `activity`, `tools`, `tokens`, `cost`, `elapsed`, `group`, `summary`. Configurable via `/subagents settings`. |
-| `allowNested` | boolean | `true` | Allow sub-agents to spawn nested sub-agents. Enforced both programmatically and in the child task prompt without affecting the prompt cache. Configurable via `/subagents settings`. |
+| `guidelines` | `"off"` \| `"manual"` \| `"default"` \| `"often"` \| `"always"` \| string[] | `"default"` | How much the agent uses sub-agents: the first line of the `subagents` prompt section. A string is a preset (below); an array is your own text, lines joined with a newline. Bad values mean `default`. Applies after `/reload`. Configurable via `/sa settings` (presets only). |
+| `fields` | string[] | `["context", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed", "summary"]` | Widget columns to display. Valid values: `id`, `context`, `model`, `thinking`, `activity`, `tools`, `tokens`, `cost`, `elapsed`, `group`, `summary`. Read at session start. Configurable via `/sa settings`. |
+| `allowNested` | boolean | `true` | Allow sub-agents to spawn nested sub-agents. Enforced both programmatically and in the child task prompt without affecting the prompt cache. Read at session start. Configurable via `/sa settings`. |
+| `guidance` | string | none | Deprecated, use `guidelines`. Read only when `guidelines` is absent: `""` means `"off"`, any other text is custom text. |
 
-The default guidance (the agent also gets `Available models: …`, a list frozen at session start so the
-prompt cache stays valid):
+Levels of `guidelines`:
 
-> - Delegation: Use `subagent` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: handle quick lookups, sequential steps, and routine checks yourself, and prefer one sub-agent over many. Give each a distinct scope, expected output, whether it may edit, and files no one else (you included) edits; don't redo delegated work.
-> - Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave `wait` unset even when you need every result. Do other work or end your turn; share a `group` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set `wait: true` only when the user asks you to block. Use `subagent_status`, `subagent_steer` or `subagent_stop` only when the user asks to peek at, redirect or stop a running sub-agent.
-> - Context & routing: Fork (default) when history helps—a brief directive suffices, and keeping the same model and thinking level reuses the prompt cache. Use `fresh: true` when history is irrelevant or would bias a requested review (pass paths, facts, constraints). Keep inherited settings by default; pair `fresh` with lower `thinking` (or a lighter model) for retrieval, summaries, or mechanical edits, and higher `thinking` for difficult judgment or debugging. Use `resume` for follow-ups.
+- `off`: no `subagents` section. The tools keep their descriptions.
+- `manual`: only when you ask for a sub-agent, or for background or parallel work.
+- `default`: independent parallel tracks and noisy exploration; quick lookups stay with the agent.
+- `often`: delegate self-contained parts by default; the agent keeps planning and synthesis.
+- `always`: almost every task that needs tools; the agent plans, briefs and synthesizes.
+
+Custom text replaces only the usage line (it is shown as `- Usage (set by the user): …`).
+The facts about the tool (context modes, background runs, groups) stay, and so does
+`Available models: …`, a list frozen at session start so the prompt cache stays valid.
+Without any usage text, use `off`. The `subagent_status`, `subagent_steer` and `subagent_stop` tools
+say "Use only when the user asks" in their own descriptions, at every level.
 
 ```json
-{ "pi-minimal": { "subagents": { "guidance": "Use the subagent tool, in the background, for every task that takes more than a few tool calls." } } }
+{ "pi-minimal": { "subagents": { "guidelines": ["Use `subagent` for code review and test runs.", "Do edits yourself."] } } }
 ```
+
+The section at `default` (the agent also gets `Available models: …`):
+
+> - Usage: Use `subagent` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: do quick lookups, sequential steps and routine checks yourself, and prefer one sub-agent over many.
+> - Context: A fork (default) sees this conversation, so a brief task suffices; your model and thinking reuse its prompt cache. `fresh: true` starts empty and unbiased: the task must carry paths, facts and constraints. `resume` continues an ended sub-agent with its context (follow-ups). A lighter model or lower `thinking` costs less (retrieval, summaries, mechanical edits); higher `thinking` helps hard judgment and debugging.
+> - Execution: At top level a sub-agent runs in the background: keep working or end your turn; its report wakes you as a message, and the user sees only a preview, so summarize it. Sub-agents sharing a `group` wake you once, when the last ends. `wait: true` blocks. Do not poll or sleep; if asked about a pending one, say it is running. Sub-agents share your working directory: give each files no one else edits, and do not redo delegated work.
 
 ## Commands
 
@@ -76,10 +90,11 @@ All commands work under `/subagents` or the short alias `/sa`:
   `--model` and `--thinking` to override model/thinking, with Tab completion).
 - `/subagents minimize`: toggle the widget between the full tree and a one-line summary
   (follows the same configured `fields`).
-- `/subagents settings`: interactively toggle which fields appear in the widget (saves to
-  `~/.pi/agent/settings.json` under `"pi-minimal"."subagents".fields`).
+- `/subagents settings`: change `guidelines` (presets), `allowNested` and the widget `fields` in a menu
+  (saves to `~/.pi/agent/settings.json` under `"pi-minimal"."subagents"`; a malformed settings file is
+  left untouched and the menu shows an error).
 
-While any sub-agent is running (or when shown via `/subagents show`), a tree shows above
+While any sub-agent is running, a tree shows above
 the editor (`● main agent (done/total)`, or the session name) with `├─` / `└─` branches, including nested
 sub-agents): each entry shows its status (`◐`/`✓`/`✗`/`○`), label, last tool, tool
 count, context window usage, elapsed time, and latest summary line.
@@ -97,7 +112,7 @@ count, context window usage, elapsed time, and latest summary line.
   tool call that started it, only its task.
 - Escape while the agent works stops every sub-agent, and the agent gets one line per
   stopped sub-agent, without a new turn. While the agent is idle, Escape does nothing
-  to them: use `/subagents stop`.
+  to them: ask the agent to stop one (it calls `subagent_stop`).
 - A sub-agent of a sub-agent always runs in the foreground (a sub-agent ends when its
   own run ends). Sub-agents nest 3 levels deep at most.
 - When a sub-agent's extension would change the prompt (for example plan mode, which
@@ -114,5 +129,4 @@ count, context window usage, elapsed time, and latest summary line.
   reach sub-agents. Settings do.
 - The prompt cache works for providers that cache by content (Anthropic). OpenAI also
   routes on the session id, and a sub-agent has its own, so it may miss the cache.
-- No limit on how many run at once, no timeout, no way to send a running sub-agent a
-  new message.
+- No limit on how many run at once, no timeout.

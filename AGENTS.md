@@ -13,8 +13,8 @@ package (`@pi-minimal/<name>`) with its own `package.json`, `AGENTS.md` and
   their file paths.
 - `nested-agent-md/` — the `AGENTS.md`/`CLAUDE.md` of a subdirectory reach the agent the
   first time it touches that directory.
-- `subagents/` — `subagent` tool and `/spawn`: forks of the conversation, with the parent's
-  tools and model, that reuse its prompt cache.
+- `subagents/` — `subagent` tool and `/sa`: forks of the conversation, with the parent's
+  tools and model, that reuse its prompt cache; `guidelines` sets how much the agent uses them.
 - `todo/` — `todo` tool and `/todo`: a declarative todo list widget above the editor,
   persisted to the session branch.
 

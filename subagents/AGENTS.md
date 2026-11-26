@@ -41,7 +41,7 @@ inactive. See `README.md` for users.
   later ones (tool_search activations) are the child's own.
 - The tool is registered in every child, even at `MAX_DEPTH` (it refuses there): tools are
   part of the cached prefix. Same for the `subagents` prompt section.
-- `forkPrompt` says the conversation above is context only: without it a fork followed the
+- `childPrompt` says the conversation above is context only: without it a fork followed the
   last user message ("call the subagent tool") and forked again, down to `MAX_DEPTH`.
 - Tools: `subagent`, `subagent_status`, `subagent_steer`, `subagent_stop`. Background is the
   default; `wait: true` blocks. It is only at depth 0 with a UI: print mode exits when its run
@@ -51,8 +51,30 @@ inactive. See `README.md` for users.
   sets `triggerTurn: false` for the others).
 - Commands: `/sa` (alias `/subagents`) with `spawn`, `minimize`, `settings`. Settings are
   `fields` (widget columns) and `allowNested` (children may spawn), both written by
-  `/sa settings` under `"pi-minimal"."subagents"`; `guidance` replaces the prompt section.
+  `/sa settings` under `"pi-minimal"."subagents"`; `guidelines` is the third key (below).
   Settings are read at `session_start`.
+- Usage levels (`guidelines`: `off | manual | default | often | always | string[]`): the
+  `subagents` section is `<usage line>` + `MECHANICS` + `Available models`. One ordered
+  `LEVELS` table in `prompts.ts` gives the valid values, the menu order and the usage
+  texts; `parseGuidelines` parses once into `"off" | level | { custom }` (bad value:
+  `default`; empty custom text: `off`). Usage comes first because it is the part users
+  change and the model should read it before the facts; `MECHANICS` is neutral and the same
+  at every level, so a custom text cannot drop the facts. Custom text is labelled `(set by
+  the user)`. `off` removes the section only. The section is built once at `session_start`
+  and only assigned in `before_agent_start` (prompt cache); `/sa settings` writes the file
+  and never touches the live section, so changes need `/reload`. Custom text is edited in
+  `settings.json` only (no editor in the menu).
+- The "use `subagent_status`, `_steer`, `_stop` only when the user asks" rule lives in those
+  tool descriptions, not in the section: a custom or `off` section cannot drop it. The `wait`
+  rule lives in the `wait` parameter description only.
+- Legacy `guidance` (string, the old whole-section override) is read only when `guidelines`
+  is absent: `""` means `off`, other text means custom. The package is 0.x: no separate
+  path, and it is documented as deprecated.
+- `writeSubagentSettings` (like todo's) starts from `{}` only for a missing file (ENOENT). A
+  malformed or unreadable file throws, and the menu notifies: wiping the user's other
+  settings was the old behaviour.
+- The active group title and the root title have no colour (terminal default), like child
+  names; counts are `muted`.
 - Delivery: `pi.sendMessage(customType "subagent", triggerTurn: true)` (steer while the
   parent streams). A stopped child gets `triggerTurn: false`: the model learns it, nothing
   wakes up. Nothing is sent after `session_shutdown`.
@@ -87,8 +109,10 @@ inactive. See `README.md` for users.
   `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps OSC 7501 and OSC 9;4
   active, and clears them when all end. It also emits `pi.events.emit("subagents:status",
   { running, total })`.
-- Static prompt text: `GUIDANCE` (about 1500 chars) plus the four tool descriptions (about 650
-  chars) is about 540 tokens, plus the parameter descriptions and the model shortlist.
+- Static prompt text at `default`: the section without models (usage 280 + `MECHANICS` 870
+  = about 1150 chars) plus the four tool descriptions (about 650 chars) is about 450 tokens
+  (chars/4), plus the parameter descriptions and the model shortlist. `manual` is about 140
+  chars shorter, `always` about 80 shorter, `often` the same as `default`.
 - Not done: concurrency limit, timeout on runs, CLI flag passthrough, idle Escape.
 
 ## Files
@@ -97,8 +121,8 @@ inactive. See `README.md` for users.
 - `fork.ts` — `forkBranch`, `forkFileText`, `dropForkDrift` (pure).
 - `child.ts` — `startChild` (spawn, JSONL events), `apply`, `outcome`, `piInvocation`
   (copied from pi's `examples/extensions/subagent`).
-- `ui.ts` — widget lines, `statusReport`, `resultView` (tool result and result messages).
-- `prompts.ts` — default guidance, tool description, fork prompt, `/sa spawn` note.
+- `ui.ts` — widget lines, settings writer, `statusReport`, `resultView` (tool result and result messages).
+- `prompts.ts` — `LEVELS`, `parseGuidelines`, `subagentsSection`, tool descriptions, child prompt, `/sa spawn` note.
 - `test.ts` — `node:test`; children are `node -e` scripts that print JSONL like pi.
 
 ## Checks
@@ -106,6 +130,8 @@ inactive. See `README.md` for users.
 - `npm run check -w subagents`. `index.ts` is checked by hand: a parent in `--mode json`
   (foreground, nested) or `--mode rpc` (background, `abort`) with a copy of the agent dir
   whose settings load this package (`PI_CODING_AGENT_DIR`, children inherit it).
+- Not run in a live pi: the `guidelines` menu item and the section in a real prompt (only the
+  parsing, section text and writer are unit-tested).
 - Mutation survivors left: equivalent `??`/`||` swaps, the Bun branch of `piInvocation`
   (only differs inside Bun), and the SIGKILL fallback (5 s; marked `shortcut:`).
 
