@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { apply, outcome, piInvocation, startChild } from "./child.ts";
 import { dropForkDrift, forkBranch, forkFileText, inspectSessionFile, restoreRecords, sanitizeSessionText } from "./fork.ts";
-import { childPrompt, compactNote, formatModelShortlist, GUIDANCE, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, subagentsCompletions } from "./prompts.ts";
+import { childPrompt, compactNote, formatModelShortlist, GUIDELINE_VALUES, parseGuidelines, parseSpawnArgs, resolveModel, resolveThinking, spawnCompletions, spawnNote, STATUS_TOOL_DESCRIPTION, STEER_TOOL_DESCRIPTION, STOP_TOOL_DESCRIPTION, subagentsCompletions, subagentsSection } from "./prompts.ts";
 import { DEFAULT_FIELDS, formatContext, headline, parseAllowNested, parseWidgetFields, resultView, statusReport, stopReply, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 // Minimal session entries: only the fields the code reads.
@@ -564,13 +564,60 @@ test("formatModelShortlist: enabled first, then current provider, then the rest;
 	assert.equal(formatModelShortlist(models, ["a/y", "y"], "a", 2), "a/y, a/x");
 });
 
-test("GUIDANCE has the three bullets and the status/steer rule; compactNote lists running sub-agents", () => {
-	assert.equal(GUIDANCE.split("\n").length, 3);
-	assert.match(GUIDANCE, /`subagent_status`, `subagent_steer` or `subagent_stop` only when the user asks/);
+test("compactNote lists running sub-agents", () => {
 	assert.equal(compactNote([]), "");
 	const note = compactNote([{ id: 2, label: "audit auth", task: "long", group: "review" }, { id: 3, task: "do\nthing" }]);
 	assert.match(note, /still running/);
 	assert.match(note, /\n- #2 \[review\] audit auth\n- #3 do thing$/);
+});
+
+// What the user writes under "pi-minimal"."subagents" in settings.json becomes the system prompt section.
+const sectionFor = (raw: unknown, models = "a/x, b/y") => subagentsSection(parseGuidelines(raw), models);
+
+test("parseGuidelines: presets, custom lines, bad values, and the legacy guidance string", () => {
+	assert.deepEqual(GUIDELINE_VALUES, ["off", "manual", "default", "often", "always"]);
+	for (const level of GUIDELINE_VALUES) assert.equal(parseGuidelines({ guidelines: level }), level);
+	assert.equal(parseGuidelines(undefined), "default");
+	assert.equal(parseGuidelines({}), "default");
+	assert.deepEqual(parseGuidelines({ guidelines: ["one", "two"] }), { custom: "one\ntwo" });
+	assert.equal(parseGuidelines({ guidelines: [] }), "off");
+	assert.equal(parseGuidelines({ guidelines: [" ", ""] }), "off");
+	for (const bad of ["nope", "Always", 3, ["a", 1], null, true]) assert.equal(parseGuidelines({ guidelines: bad }), "default", String(bad));
+	// legacy `guidance`: only when `guidelines` is absent
+	assert.equal(parseGuidelines({ guidance: "" }), "off");
+	assert.deepEqual(parseGuidelines({ guidance: "Always delegate." }), { custom: "Always delegate." });
+	assert.equal(parseGuidelines({ guidance: 3 }), "default");
+	assert.equal(parseGuidelines({ guidance: "x", guidelines: "manual" }), "manual");
+	assert.equal(parseGuidelines({ guidance: "x", guidelines: "nope" }), "default");
+});
+
+test("subagentsSection: usage line first, mechanics next, models last; one usage text per level", () => {
+	const usages = new Set<string>();
+	for (const level of ["manual", "default", "often", "always"]) {
+		const lines = sectionFor({ guidelines: level })!.split("\n");
+		assert.match(lines[0], /^- Usage: /);
+		assert.match(lines[1], /^- Context: A fork \(default\)/);
+		assert.match(lines[2], /^- Execution: At top level a sub-agent runs in the background/);
+		assert.equal(lines.slice(3).join("\n"), "\nAvailable models: a/x, b/y");
+		usages.add(lines[0]);
+	}
+	assert.equal(usages.size, 4);
+	assert.equal(sectionFor({}), sectionFor({ guidelines: "default" }));
+	assert.doesNotMatch(sectionFor({}, "") ?? "", /Available models/);
+});
+
+test("subagentsSection: custom text is labelled, comes first, may span lines; off drops the section", () => {
+	const section = sectionFor({ guidelines: ["Delegate tests.", "Never delegate edits."] })!;
+	assert.ok(section.startsWith("- Usage (set by the user): Delegate tests.\nNever delegate edits.\n- Context: "));
+	assert.ok(section.endsWith("\n\nAvailable models: a/x, b/y"));
+	assert.equal(sectionFor({ guidelines: "off" }), undefined);
+	assert.equal(sectionFor({ guidance: "" }), undefined);
+	assert.ok(sectionFor({ guidance: "old text" })!.startsWith("- Usage (set by the user): old text\n"));
+});
+
+test("section and tool descriptions: peek/redirect tools carry the user-only rule, not the section", () => {
+	for (const d of [STATUS_TOOL_DESCRIPTION, STEER_TOOL_DESCRIPTION, STOP_TOOL_DESCRIPTION]) assert.match(d, /Use only when the user asks\.$/);
+	for (const level of GUIDELINE_VALUES) assert.doesNotMatch(sectionFor({ guidelines: level }) ?? "", /subagent_(status|steer|stop)/);
 });
 
 test("stopReply says stopping or already ended, with session and resume hint", () => {

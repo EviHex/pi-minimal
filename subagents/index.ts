@@ -12,7 +12,9 @@ import {
 	childPrompt,
 	compactNote,
 	formatModelShortlist,
-	GUIDANCE,
+	GUIDELINE_VALUES,
+	type Guidelines,
+	parseGuidelines,
 	parseSpawnArgs,
 	resolveModel,
 	resolveThinking,
@@ -21,6 +23,7 @@ import {
 	STEER_TOOL_DESCRIPTION,
 	STOP_TOOL_DESCRIPTION,
 	subagentsCompletions,
+	subagentsSection,
 	THINKING_LEVELS,
 	TOOL_DESCRIPTION,
 } from "./prompts.ts";
@@ -58,8 +61,8 @@ export default function (pi: ExtensionAPI) {
 	let agentRunning = false;
 	let reportedWorking = false;
 	let timer: NodeJS.Timeout | undefined; // ticks the widget's clocks
-	let guidance = GUIDANCE;
-	let modelShortlist = ""; // frozen at session_start: a mid-session change would break the prompt cache
+	let guidelines: Guidelines = "default"; // what the settings menu shows; the prompt does not follow it until /reload
+	let section: string | undefined; // frozen at session_start: a mid-session change would break the prompt cache
 	let compacting = false; // `/compact` aborts the run first: that abort must not stop the children
 	let widgetFields: WidgetField[] = [...DEFAULT_FIELDS];
 	let allowNested = ENV_ALLOW_NESTED;
@@ -200,7 +203,7 @@ export default function (pi: ExtensionAPI) {
 			task: Type.String({ description: "Goal, scope, whether it may edit, and expected output. Brief on fork; self-contained on fresh; follow-up only on resume." }),
 			label: Type.Optional(Type.String({ description: "2–4 word lowercase focus (no model/thinking/id), e.g. \"audit auth\", \"oauth limits\"." })),
 			fresh: Type.Optional(Type.Boolean({ description: "Start with an empty context instead of forking." })),
-			resume: Type.Optional(Type.Number({ description: "Continue a finished or stopped sub-agent by #id with its prior context." })),
+			resume: Type.Optional(Type.Number({ description: "Continue a finished, failed or stopped sub-agent by #id with its prior context." })),
 			model: Type.Optional(Type.String({ description: "Model ID (provider/id or id). Default: parent's (child's on resume)." })),
 			thinking: Type.Optional(
 				Type.Union(
@@ -209,7 +212,7 @@ export default function (pi: ExtensionAPI) {
 				),
 			),
 			wait: Type.Optional(Type.Boolean({ description: "Block until done (default: false). Only when the user asks." })),
-			group: Type.Optional(Type.String({ description: "Shared task name for a parallel batch (e.g. \"prompt review\"); wakes once when all finish. Omit for single calls." })),
+			group: Type.Optional(Type.String({ description: "Shared name for a parallel batch (e.g. \"prompt review\"). Omit for single calls." })),
 		}),
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const child = launch(params.task, ctx, {
@@ -371,6 +374,13 @@ export default function (pi: ExtensionAPI) {
 		};
 		const topItems = [
 			{
+				id: "guidelines",
+				label: "guidelines",
+				description: "How much the agent uses sub-agents. Applies after /reload. A preset replaces custom text from settings.json.",
+				currentValue: typeof guidelines === "string" ? guidelines : "custom",
+				values: [...GUIDELINE_VALUES],
+			},
+			{
 				id: "allowNested",
 				label: "Nested sub-agents",
 				description: "Allow sub-agents to spawn nested sub-agents",
@@ -397,6 +407,9 @@ export default function (pi: ExtensionAPI) {
 					if (id === "allowNested") {
 						allowNested = val === "on";
 						save({ allowNested });
+					} else if (id === "guidelines") {
+						guidelines = val as Guidelines;
+						save({ guidelines: val });
 					}
 				},
 				() => done(),
@@ -451,9 +464,10 @@ export default function (pi: ExtensionAPI) {
 		closing = false;
 		session = ctx;
 		currentSessionFile = ctx.sessionManager.getSessionFile();
-		const settings = pi.getSettings() as { "pi-minimal"?: { subagents?: { guidance?: string; fields?: unknown; allowNested?: unknown } } };
-		guidance = settings["pi-minimal"]?.subagents?.guidance ?? GUIDANCE;
-		modelShortlist = formatModelShortlist(availableModels(ctx), (settings as { enabledModels?: string[] }).enabledModels, ctx.model?.provider);
+		const settings = pi.getSettings() as { "pi-minimal"?: { subagents?: { fields?: unknown; allowNested?: unknown } } };
+		guidelines = parseGuidelines(settings["pi-minimal"]?.subagents);
+		const modelShortlist = formatModelShortlist(availableModels(ctx), (settings as { enabledModels?: string[] }).enabledModels, ctx.model?.provider);
+		section = subagentsSection(guidelines, modelShortlist);
 		widgetFields = parseWidgetFields(settings["pi-minimal"]?.subagents?.fields);
 		allowNested = ENV_ALLOW_NESTED && settings["pi-minimal"]?.subagents?.allowNested !== false;
 		if (DEPTH === 0) {
@@ -484,7 +498,7 @@ export default function (pi: ExtensionAPI) {
 
 	// Same text in every fork, so it does not break the prompt cache.
 	pi.on("before_agent_start", (event) => {
-		if (guidance) event.systemPromptOptions.sections.subagents = modelShortlist ? `${guidance}\n\nAvailable models: ${modelShortlist}` : guidance;
+		if (section) event.systemPromptOptions.sections.subagents = section;
 	});
 
 	// `/compact` aborts the run (agent_settled aborted) before it starts: keep the children, and remind the agent of them afterwards.

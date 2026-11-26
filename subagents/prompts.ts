@@ -15,10 +15,46 @@ export interface SpawnArgs {
 	task: string;
 }
 
-/** Default `subagents` section of the system prompt. The `guidance` setting replaces it. */
-export const GUIDANCE = `- Delegation: Use \`subagent\` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: handle quick lookups, sequential steps, and routine checks yourself, and prefer one sub-agent over many. Give each a distinct scope, expected output, whether it may edit, and files no one else (you included) edits; don't redo delegated work.
-- Execution: At top level, sub-agents run in the background and wake you with their report so the user can steer—leave \`wait\` unset even when you need every result. Do other work or end your turn; share a \`group\` on parallel batches to wake once when all finish. Do not poll, sleep, or guess pending results (if asked, say it is running); synthesize reports for the user rather than copying them. Set \`wait: true\` only when the user asks you to block. Use \`subagent_status\`, \`subagent_steer\` or \`subagent_stop\` only when the user asks to peek at, redirect or stop a running sub-agent.
-- Context & routing: Fork (default) when history helps—a brief directive suffices, and keeping the same model and thinking level reuses the prompt cache. Use \`fresh: true\` when history is irrelevant or would bias a requested review (pass paths, facts, constraints). Keep inherited settings by default; pair \`fresh\` with lower \`thinking\` (or a lighter model) for retrieval, summaries, or mechanical edits, and higher \`thinking\` for difficult judgment or debugging. Use \`resume\` for follow-ups.`;
+/** How much the agent uses sub-agents: the usage line of the `subagents` prompt section, in menu order. */
+export const LEVELS = {
+	manual: "- Usage: Use `subagent` only when the user explicitly asks for a sub-agent or for background or parallel work. Otherwise do all work yourself.",
+	default:
+		"- Usage: Use `subagent` for independent parallel tracks, or noisy exploration (docs, broad search, logs, tests) that reduces to a concise report with sources. Sub-agents add cost: do quick lookups, sequential steps and routine checks yourself, and prefer one sub-agent over many.",
+	often:
+		"- Usage: Delegate by default. Give each self-contained part of a task (exploration, research, review, tests, independent edits) to a sub-agent, in parallel when parts are independent; keep your own context for planning and synthesis. Do quick lookups and small single edits yourself.",
+	always:
+		"- Usage: Use `subagent` for almost every task that needs tools, even small ones: you plan, brief and synthesize; sub-agents do the work. Work directly only for pure chat or one trivial tool call.",
+} as const;
+export type Level = keyof typeof LEVELS;
+/** Valid `guidelines` strings, in menu order. */
+export const GUIDELINE_VALUES = ["off", ...(Object.keys(LEVELS) as Level[])] as const;
+
+/** A parsed `guidelines` setting: no section, a preset, or the user's own usage text. */
+export type Guidelines = (typeof GUIDELINE_VALUES)[number] | { custom: string };
+
+const isLine = (l: unknown): l is string => typeof l === "string";
+
+/** `raw` is the `"pi-minimal"."subagents"` object. `guidance` (a string) is the old name: read only when `guidelines` is absent. */
+export function parseGuidelines(raw: unknown): Guidelines {
+	const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+	const custom = (text: string): Guidelines => (text.trim() ? { custom: text.trim() } : "off");
+	if (r.guidelines === undefined) return isLine(r.guidance) ? custom(r.guidance) : "default";
+	const g = r.guidelines;
+	if (GUIDELINE_VALUES.includes(g as never)) return g as Guidelines;
+	return Array.isArray(g) && g.every(isLine) ? custom(g.join("\n")) : "default";
+}
+
+/** Facts about the tool that hold at every level. */
+const MECHANICS = `- Context: A fork (default) sees this conversation, so a brief task suffices; your model and thinking reuse its prompt cache. \`fresh: true\` starts empty and unbiased: the task must carry paths, facts and constraints. \`resume\` continues an ended sub-agent with its context (follow-ups). A lighter model or lower \`thinking\` costs less (retrieval, summaries, mechanical edits); higher \`thinking\` helps hard judgment and debugging.
+- Execution: At top level a sub-agent runs in the background: keep working or end your turn; its report wakes you as a message, and the user sees only a preview, so summarize it. Sub-agents sharing a \`group\` wake you once, when the last ends. \`wait: true\` blocks. Do not poll or sleep; if asked about a pending one, say it is running. Sub-agents share your working directory: give each files no one else edits, and do not redo delegated work.`;
+
+/** The `subagents` section of the system prompt, or `undefined` for `off`. Built once per session: the text must not change (prompt cache). */
+export function subagentsSection(guidelines: Guidelines, modelShortlist: string): string | undefined {
+	if (guidelines === "off") return undefined;
+	const usage = typeof guidelines === "string" ? LEVELS[guidelines] : `- Usage (set by the user): ${guidelines.custom}`;
+	const body = `${usage}\n${MECHANICS}`;
+	return modelShortlist ? `${body}\n\nAvailable models: ${modelShortlist}` : body;
+}
 
 export const TOOL_DESCRIPTION = `Start or resume a sub-agent with your tools; only its final report returns. Default: background fork, delivered later as a message.`;
 
@@ -39,11 +75,11 @@ export function compactNote(running: { id: number; label?: string; task: string;
 	return `Context was compacted. These background sub-agents are still running; each result still arrives as a message when it ends:\n${running.map(line).join("\n")}`;
 }
 
-export const STATUS_TOOL_DESCRIPTION = `Non-blocking snapshot of a sub-agent by its #id: shows current activity, recent tool calls/text, context usage, or the final result if finished. Does not wait—background sub-agents wake you automatically when they finish.`;
+export const STATUS_TOOL_DESCRIPTION = `Non-blocking snapshot of a sub-agent by its #id: shows current activity, recent tool calls/text, context usage, or the final result if finished. Use only when the user asks.`;
 
-export const STOP_TOOL_DESCRIPTION = `Stop a running sub-agent by its #id; it will not wake you. Use \`subagent\` with \`resume\` to continue it later.`;
+export const STOP_TOOL_DESCRIPTION = `Stop a running sub-agent by its #id; it will not wake you. Use \`subagent\` with \`resume\` to continue it later. Use only when the user asks.`;
 
-export const STEER_TOOL_DESCRIPTION = `Send a steering message to a currently running sub-agent by its #id (delivered after its current tool finishes). Use \`subagent\` with \`resume\` instead if the sub-agent has already ended.`;
+export const STEER_TOOL_DESCRIPTION = `Send a steering message to a currently running sub-agent by its #id (delivered after its current tool finishes). Use \`subagent\` with \`resume\` instead if the sub-agent has already ended. Use only when the user asks.`;
 
 const BLOCKED_AND_OUTPUT_RULES =
 	"If you are blocked on a decision or missing info only the parent can supply, stop and state the exact question in your final message so the parent can resume you with the answer. Your final message is all the parent agent gets back: make it complete and concise.";
@@ -205,7 +241,7 @@ export function spawnCompletions(argumentText: string, models: ModelRef[]) {
 const SUBCOMMANDS = [
 	{ name: "spawn", value: "spawn ", description: "Start a background sub-agent [--fresh] [--model] [--thinking] <task>" },
 	{ name: "minimize", value: "minimize", description: "Toggle the widget between full tree and one-line summary" },
-	{ name: "settings", value: "settings", description: "Configure visible widget fields interactively" },
+	{ name: "settings", value: "settings", description: "Change settings: guidelines, nested sub-agents, widget fields" },
 ];
 
 /** Argument completions for `/subagents` and `/sa`. */
