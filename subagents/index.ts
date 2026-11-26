@@ -338,6 +338,13 @@ export default function (pi: ExtensionAPI) {
 	const openSettings = async (ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui") return;
 		const settingsFile = join(getAgentDir(), "settings.json");
+		const save = (patch: Record<string, unknown>) => {
+			try {
+				writeSubagentSettings(settingsFile, patch);
+			} catch (error) {
+				ctx.ui.notify(`Settings not saved: ${(error as Error).message}`, "error");
+			}
+		};
 		const enabled = new Set<WidgetField>(widgetFields);
 		const fieldsSummary = () => `${widgetFields.length}/${WIDGET_FIELDS.length}`;
 		const buildFieldsSubmenu = (closeSub: (selectedValue?: string) => void) => {
@@ -356,7 +363,7 @@ export default function (pi: ExtensionAPI) {
 					if (val === "on") enabled.add(id as WidgetField);
 					else enabled.delete(id as WidgetField);
 					widgetFields = WIDGET_FIELDS.filter((f) => enabled.has(f));
-					writeSubagentSettings(settingsFile, { fields: widgetFields });
+					save({ fields: widgetFields });
 					refresh();
 				},
 				() => closeSub(fieldsSummary()),
@@ -389,7 +396,7 @@ export default function (pi: ExtensionAPI) {
 				(id, val) => {
 					if (id === "allowNested") {
 						allowNested = val === "on";
-						writeSubagentSettings(settingsFile, { allowNested });
+						save({ allowNested });
 					}
 				},
 				() => done(),

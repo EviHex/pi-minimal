@@ -219,6 +219,20 @@ test("parseWidgetFields filters unknown entries and writeSubagentSettings preser
 	assert.deepEqual(saved["pi-minimal"].subagents, { guidance: "hi", fields: ["context", "elapsed"] });
 });
 
+test("writeSubagentSettings creates a missing file, but refuses a malformed or unreadable one and keeps its text", () => {
+	const dir = mkdtempSync(join(tmpdir(), "subagents-settings-"));
+	const fresh = join(dir, "new", "settings.json");
+	writeSubagentSettings(fresh, { allowNested: false });
+	assert.deepEqual(JSON.parse(readFileSync(fresh, "utf8")), { "pi-minimal": { subagents: { allowNested: false } } });
+	const file = join(dir, "settings.json");
+	for (const text of ["{not json", "", "[1]", "null"]) {
+		writeFileSync(file, text);
+		assert.throws(() => writeSubagentSettings(file, { allowNested: true }));
+		assert.equal(readFileSync(file, "utf8"), text);
+	}
+	assert.throws(() => writeSubagentSettings(dir, { allowNested: true }));
+});
+
 const exit = (code: number | null, more = {}) => ({ code, signal: code === null ? "SIGKILL" : null, stderr: "", ...more });
 
 test("outcome: a stop wins over everything and keeps any last assistant text", () => {

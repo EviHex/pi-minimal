@@ -128,7 +128,11 @@ export default function (pi: ExtensionAPI) {
 					const patch: Partial<TodoSettings> =
 						id === "reminderInterval" ? { reminderInterval: value === "off" ? 0 : Number(value) } : id === "guidelines" ? { guidelines: value as GuidelinesSetting } : { [id]: value === "on" };
 					settings = { ...settings, ...patch };
-					writeTodoSettings(file, patch);
+					try {
+						writeTodoSettings(file, patch);
+					} catch (error) {
+						ctx.ui.notify(`Settings not saved: ${(error as Error).message}`, "error");
+					}
 				},
 				() => done(),
 			);

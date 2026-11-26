@@ -163,11 +163,18 @@ describe("settings", () => {
 		});
 	});
 
-	it("recovers from a corrupt settings file", () => {
+	it("refuses to rewrite a malformed settings file and keeps its text", () => {
 		const file = join(mkdtempSync(join(tmpdir(), "todo-")), "settings.json");
-		writeFileSync(file, "{not json");
-		writeTodoSettings(file, { defaultMinimized: true });
-		assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { "pi-minimal": { todo: { defaultMinimized: true } } });
+		for (const text of ["{not json", "", "[1]", "null"]) {
+			writeFileSync(file, text);
+			assert.throws(() => writeTodoSettings(file, { defaultMinimized: true }));
+			assert.equal(readFileSync(file, "utf8"), text);
+		}
+	});
+
+	it("refuses an unreadable settings file (a directory)", () => {
+		const dir = mkdtempSync(join(tmpdir(), "todo-"));
+		assert.throws(() => writeTodoSettings(dir, { defaultMinimized: true }));
 	});
 });
 

@@ -38,14 +38,15 @@ export function parseWidgetFields(raw: unknown): WidgetField[] {
 	return [...seen];
 }
 
-/** Merge keys into settings.json under "pi-minimal"."subagents" without disturbing unrelated settings. */
+/** Merge keys into settings.json under "pi-minimal"."subagents" without disturbing unrelated settings. Throws, and writes nothing, when the file exists but cannot be read or is not a JSON object. */
 export function writeSubagentSettings(filePath: string, patch: Record<string, unknown>): void {
 	let data: Record<string, unknown> = {};
 	try {
-		const parsed = JSON.parse(readFileSync(filePath, "utf8"));
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) data = parsed as Record<string, unknown>;
-	} catch {
-		// start from empty object if file does not exist or is malformed
+		data = JSON.parse(readFileSync(filePath, "utf8"));
+		if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("not a JSON object");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`Cannot update ${filePath}: ${(error as Error).message}`);
+		data = {};
 	}
 	const pm = data["pi-minimal"] && typeof data["pi-minimal"] === "object" && !Array.isArray(data["pi-minimal"])
 		? { ...(data["pi-minimal"] as Record<string, unknown>) }

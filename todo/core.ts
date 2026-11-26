@@ -144,13 +144,16 @@ export function parseTodoSettings(raw: unknown): TodoSettings {
 	};
 }
 
-/** Merge `patch` under `"pi-minimal"."todo"` in a settings file, keeping everything else. */
+/** Merge `patch` under `"pi-minimal"."todo"` in a settings file, keeping everything else. Throws, and writes nothing, when the file exists but cannot be read or is not a JSON object. */
 export function writeTodoSettings(filePath: string, patch: Partial<TodoSettings>): void {
 	let root: Record<string, any> = {};
 	try {
-		const parsed = JSON.parse(readFileSync(filePath, "utf8"));
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) root = parsed;
-	} catch {}
+		root = JSON.parse(readFileSync(filePath, "utf8"));
+		if (!root || typeof root !== "object" || Array.isArray(root)) throw new Error("not a JSON object");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error(`Cannot update ${filePath}: ${(error as Error).message}`);
+		root = {};
+	}
 	const ns = root["pi-minimal"] && typeof root["pi-minimal"] === "object" ? root["pi-minimal"] : {};
 	const prev = ns.todo && typeof ns.todo === "object" ? ns.todo : {};
 	root["pi-minimal"] = { ...ns, todo: { ...prev, ...patch } };
