@@ -191,7 +191,7 @@ function renderGroup(name: string, members: ChildSnapshot[], isLast: boolean, th
 	const done = members.filter((m) => m.status === "done").length;
 	const title = `◈ group: ${humanizeGroup(name).toLowerCase()}`;
 	const count = `(${done}/${members.length})`;
-	const header = active ? `${theme.fg("text", title)} ${theme.fg("muted", count)}` : theme.fg("dim", `${title} ${count}`);
+	const header = active ? `${title} ${theme.fg("muted", count)}` : theme.fg("dim", `${title} ${count}`);
 	out.push(`${branch}${header}`);
 	const nextPrefix = isLast ? "   " : "│  ";
 	members.forEach((m, idx) => renderNode({ ...m, group: undefined }, `${m.id}`, nextPrefix, idx === members.length - 1, theme, now, show, out));

@@ -11,7 +11,7 @@ the branch on `session_start`, `session_compact` and `session_tree`. See `README
 - No keyboard shortcut: `/todo minimize` does the job without a conflict risk.
 - Widget text is lowercase for the fixed words (`todos`, `pending`, `all done`), like
   `@pi-minimal/subagents`. Item text is shown as written.
-- Colors: the sub-agents palette (`accent` dot, `muted` count, `warning` for `in_progress`,
+- Colors: the sub-agents palette (`accent` dot, terminal colour for the title, `muted` count, `warning` for `in_progress`,
   `borderMuted` tree lines, `dim` for done rows).
 - `/todo clear` sends a hidden custom message (`display: false`, `triggerTurn: false`) at the
   tail, so earlier messages (the cached prefix) do not change.

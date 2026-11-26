@@ -177,7 +177,7 @@ test("widgetLines renders main agent root, hides id by default, humanizes neutra
 	const doneLine = widgetLines([done], tagged, 65_000)[1];
 	assert.ok(!/<(syntaxKeyword|syntaxType|syntaxNumber|syntaxString|mdCode|thinkingMedium)>/.test(doneLine), `inactive row should be dimmed: ${doneLine}`);
 	const activeGroupHeader = widgetLines([running], tagged, 65_000)[1];
-	assert.equal(activeGroupHeader, "<borderMuted>└─ </borderMuted><text>◈ group: prompt review v4</text> <muted>(0/1)</muted>");
+	assert.equal(activeGroupHeader, "<borderMuted>└─ </borderMuted>◈ group: prompt review v4 <muted>(0/1)</muted>");
 	const doneGrouped = { ...(done as object), group: "batch__run" } as never;
 	const doneGroupHeader = widgetLines([doneGrouped], tagged, 65_000)[1];
 	assert.equal(doneGroupHeader, "<borderMuted>└─ </borderMuted><dim>◈ group: batch run (1/1)</dim>");

@@ -92,7 +92,8 @@ export function renderLines(items: readonly TodoItem[], minimized: boolean, styl
 	const done = count(items, "done");
 	const allDone = done === items.length;
 	const label = `todos (${done}/${items.length})`;
-	const header = allDone ? style.dim(`○ ${label}`) : `${style.accent("●")} ${style.muted(label)}`;
+	// Like the sub-agents widget: the title has the terminal colour, only the count is muted.
+	const header = allDone ? style.dim(`○ ${label}`) : `${style.accent("●")} todos ${style.muted(`(${done}/${items.length})`)}`;
 
 	if (minimized) {
 		const active = items.find((i) => i.status === "in_progress");

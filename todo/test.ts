@@ -102,7 +102,7 @@ describe("renderLines", () => {
 
 	it("colors the parts of the tree", () => {
 		assert.deepEqual(renderLines([item("Read", "done"), item("Write", "in_progress"), item("Run", "pending")], false, tagged), [
-			"<a>●</a> <m>todos (1/3)</m>",
+			"<a>●</a> todos <m>(1/3)</m>",
 			"<b>├─ </b><d>✓ Read</d>",
 			"<b>├─ </b><w>◐</w> Write",
 			"<b>└─ </b><m>○</m> Run",
@@ -115,7 +115,7 @@ describe("renderLines", () => {
 
 	it("minimized: one line with the active item", () => {
 		assert.deepEqual(renderLines(four, true, plain), ["● todos (1/4) › ◐ Write tests"]);
-		assert.deepEqual(renderLines(four, true, tagged), ["<a>●</a> <m>todos (1/4)</m> <d>›</d> <w>◐</w> Write tests"]);
+		assert.deepEqual(renderLines(four, true, tagged), ["<a>●</a> todos <m>(1/4)</m> <d>›</d> <w>◐</w> Write tests"]);
 	});
 
 	it("minimized: pending count without an active item, and `all done`", () => {
