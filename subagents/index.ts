@@ -28,7 +28,7 @@ import {
 	THINKING_LEVELS,
 	TOOL_DESCRIPTION,
 } from "./prompts.ts";
-import { DEFAULT_FIELDS, FIELD_META, parseWidgetFields, priorReport, resultView, statusReport, stopReply, WIDGET_FIELDS, type WidgetField, widgetLines, writeSubagentSettings } from "./ui.ts";
+import { DEFAULT_FIELDS, FIELD_META, parseAllowNested, parseWidgetFields, priorReport, resultView, statusReport, stopReply, WIDGET_FIELDS, type WidgetField, widgetLines, writeSubagentSettings } from "./ui.ts";
 
 /** How deep this pi is: 0 for the user's, 1 for a sub-agent, 2 for its sub-agent... */
 const DEPTH = Number(process.env.PI_MINIMAL_SUBAGENT_DEPTH) || 0;
@@ -476,7 +476,7 @@ export default function (pi: ExtensionAPI) {
 		const modelShortlist = formatModelShortlist(availableModels(ctx), (settings as { enabledModels?: string[] }).enabledModels, ctx.model?.provider);
 		section = subagentsSection(guidelines, modelShortlist);
 		widgetFields = parseWidgetFields(settings["pi-minimal"]?.subagents?.fields);
-		allowNested = ENV_ALLOW_NESTED && settings["pi-minimal"]?.subagents?.allowNested !== false;
+		allowNested = ENV_ALLOW_NESTED && parseAllowNested(settings["pi-minimal"]?.subagents?.allowNested);
 		if (DEPTH === 0) {
 			const store = globalThis as Record<symbol, Handoff | undefined>;
 			const handoff = store[HANDOFF_KEY];
