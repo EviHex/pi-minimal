@@ -120,6 +120,10 @@ inactive. See `README.md` for users.
   during the `/reload` gap is adopted with its result undelivered (as before).
 - Resume collision: a resume gets a new id but reuses the old `file`, so `launch` refuses when
   any running child uses that file (`liveOnFile`), by file and not by id. It names the running #id.
+- Untrusted output: `statusReport` puts one label line (`UNTRUSTED_OUTPUT`, about 13 tokens)
+  before a finished child's output, once, in the per-result text (tool result and result
+  message), never in the system prompt. No output, no label. The label is a note, not a
+  guarantee: a model can still follow an injected instruction.
 - Terminal status: while background children run and the main agent is idle,
   `syncTerminalStatus` (queued after pi's `ProgramStatusReporter`) keeps OSC 7501 and OSC 9;4
   active, and clears them when all end. It also emits `pi.events.emit("subagents:status",
