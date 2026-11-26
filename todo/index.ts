@@ -111,12 +111,12 @@ export default function (pi: ExtensionAPI) {
 			const onOff = (on: boolean) => (on ? "on" : "off");
 			const list = new SettingsList(
 				[
-					{ id: "defaultMinimized", label: "Start minimized", currentValue: onOff(settings.defaultMinimized), values: ["off", "on"] },
-					{ id: "hideCompletedOnNextTurn", label: "Hide when all done", currentValue: onOff(settings.hideCompletedOnNextTurn), values: ["on", "off"] },
-					{ id: "reminderInterval", label: "Update reminder", currentValue: settings.reminderInterval ? String(settings.reminderInterval) : "off", values: ["off", "5", "8", "12"] },
+					{ id: "defaultMinimized", label: "start minimized", currentValue: onOff(settings.defaultMinimized), values: ["off", "on"] },
+					{ id: "hideCompletedOnNextTurn", label: "hide when all done", currentValue: onOff(settings.hideCompletedOnNextTurn), values: ["on", "off"] },
+					{ id: "reminderInterval", label: "update reminder", currentValue: settings.reminderInterval ? String(settings.reminderInterval) : "off", values: ["off", "5", "8", "12"] },
 					{
 						id: "guidelines",
-						label: "Guidelines",
+						label: "guidelines",
 						currentValue: typeof settings.guidelines === "string" ? settings.guidelines : "custom",
 						values: ["default", "always", "off"],
 						description: "Prompt text for the todo tool. Applies after /reload. Replaces a custom list from settings.json.",

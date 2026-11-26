@@ -9,17 +9,17 @@ export type WidgetField = (typeof WIDGET_FIELDS)[number];
 export const DEFAULT_FIELDS: WidgetField[] = ["context", "model", "thinking", "activity", "tools", "tokens", "cost", "elapsed", "summary"];
 
 export const FIELD_META: Record<WidgetField, { label: string; description: string }> = {
-	id: { label: "Sub-agent ID", description: "Show numeric #id prefix on each sub-agent" },
-	context: { label: "Context mode", description: "Show context:fork, context:fresh, or context:resume" },
-	model: { label: "Model", description: "Show short model name (e.g. claude-opus-4-6)" },
-	thinking: { label: "Thinking level", description: "Show thinking level (e.g. think:med)" },
-	activity: { label: "Current activity", description: "Show active tool or phase while running" },
-	tools: { label: "Tool count", description: "Show number of tool calls made" },
-	tokens: { label: "Context usage", description: "Show context window tokens and percentage" },
-	cost: { label: "Session cost", description: "Show cumulative USD cost when reported" },
-	elapsed: { label: "Elapsed time", description: "Show wall-clock duration" },
-	group: { label: "Batch group", description: "Show [group] badge for grouped background runs" },
-	summary: { label: "Last summary", description: "Show latest assistant summary line" },
+	id: { label: "sub-agent id", description: "Show numeric #id prefix on each sub-agent" },
+	context: { label: "context mode", description: "Show context:fork, context:fresh, or context:resume" },
+	model: { label: "model", description: "Show short model name (e.g. claude-opus-4-6)" },
+	thinking: { label: "thinking level", description: "Show thinking level (e.g. think:med)" },
+	activity: { label: "current activity", description: "Show active tool or phase while running" },
+	tools: { label: "tool count", description: "Show number of tool calls made" },
+	tokens: { label: "context usage", description: "Show context window tokens and percentage" },
+	cost: { label: "session cost", description: "Show cumulative USD cost when reported" },
+	elapsed: { label: "elapsed time", description: "Show wall-clock duration" },
+	group: { label: "batch group", description: "Show [group] badge for grouped background runs" },
+	summary: { label: "last summary", description: "Show latest assistant summary line" },
 };
 
 /** Parse whether nested sub-agents are allowed (defaults to true unless explicitly false). */

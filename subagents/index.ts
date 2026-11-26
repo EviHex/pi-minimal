@@ -382,14 +382,14 @@ export default function (pi: ExtensionAPI) {
 			},
 			{
 				id: "allowNested",
-				label: "Nested sub-agents",
+				label: "nested sub-agents",
 				description: "Allow sub-agents to spawn nested sub-agents",
 				currentValue: allowNested ? "on" : "off",
 				values: ["on", "off"],
 			},
 			{
 				id: "fields",
-				label: "Widget fields",
+				label: "widget fields",
 				description: "Choose which columns appear in the sub-agents widget",
 				currentValue: fieldsSummary(),
 				submenu: (_cur: string, closeSub: (selectedValue?: string) => void) => buildFieldsSubmenu(closeSub),
@@ -398,7 +398,7 @@ export default function (pi: ExtensionAPI) {
 		await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 			const box = new Container();
 			box.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
-			box.addChild(new Text(theme.fg("accent", theme.bold(" Sub-agents Settings")), 0, 0));
+			box.addChild(new Text(theme.fg("accent", theme.bold(" sub-agents settings")), 0, 0));
 			const list = new SettingsList(
 				topItems,
 				Math.min(topItems.length, 12),
